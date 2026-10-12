@@ -5,6 +5,8 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+## 1.7.20 - 2026-10-12
+
 ### Changed
 
 - Each upload destination in Study settings > Data destinations is now one calm block, the same for every destination plugin. A status line names the next missing step (the key, then a required setting) and that control is highlighted; it counts the same things the study start check does. Below it: the per-study key with a short "Save", the fields an operator actually types, and a "Target" row with the plugin's own "Configure…" and its "Test connection". Read-only values sit in a closed "Technical details" section instead of greyed-out inputs. Actions a plugin's configurator uses internally are no longer shown as raw forms (Notion offered seven, with cursor, page ID and mapping fields): a manifest marks them `"surface": "configurator"`, and the dashboard follows the same rule. A panel action no longer asks for a machine setting such as the timeout - Notion and Nextcloud use the one set for this computer.
