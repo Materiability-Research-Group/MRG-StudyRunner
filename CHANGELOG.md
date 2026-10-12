@@ -5,6 +5,10 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Fixed
+
+- The Notion "Configure…" button works again. Since 1.7.17 it only showed "The configurator could not be loaded": the configurator loads two more files for its node view, and the server hands out only plugin files the manifest declares, which these two were not. A new test now checks for every plugin that each file its interface modules import is declared (Notion plugin 1.4.3).
+
 ## 1.7.18 - 2026-10-08
 
 ### Fixed

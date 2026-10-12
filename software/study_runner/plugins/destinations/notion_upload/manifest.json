@@ -1,7 +1,7 @@
 {
   "api_version": 5,
   "plugin_key": "notion",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "category": "storage",
   "config_key": "notion",
   "runtime": {
@@ -38,7 +38,11 @@
     },
     "extensions": {
       "study_settings": "ui/configurator.js"
-    }
+    },
+    "assets": [
+      "ui/configurator-node-view.js",
+      "ui/node-canvas.js"
+    ]
   },
   "capabilities": {
     "upload_destination": {

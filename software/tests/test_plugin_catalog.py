@@ -978,6 +978,19 @@ class PublicCatalogTests(unittest.TestCase):
         stylesheet.close()
         undeclared.close()
 
+    def test_plugin_asset_endpoint_serves_the_modules_a_declared_module_imports(self) -> None:
+        from flask import Flask
+
+        app = Flask(__name__)
+        app.register_blueprint(plugins_blueprint)
+        client = app.test_client()
+
+        for asset in ("ui/configurator.js", "ui/configurator-node-view.js", "ui/node-canvas.js"):
+            response = client.get(f"/api/plugins/notion/assets/{asset}")
+            self.assertEqual(response.status_code, 200, asset)
+            self.assertEqual(response.mimetype, "text/javascript", asset)
+            response.close()
+
     def test_admin_action_endpoint_rejects_wrong_and_unknown_payload_fields(self) -> None:
         from flask import Flask
 

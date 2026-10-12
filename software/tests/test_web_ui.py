@@ -628,6 +628,37 @@ class PluginUiContractTests(unittest.TestCase):
         self.assertIn('ui.get("extensions")', packaging)
         self.assertIn('ui.get("assets")', packaging)
 
+    def test_every_relative_import_of_a_plugin_ui_module_is_a_declared_asset(self) -> None:
+        # The asset route serves only files the manifest declares. A module
+        # that imports an undeclared file fails as a whole in the browser,
+        # while every test that reads the files from disk still passes.
+        import_pattern = re.compile(r"""(?:\bimport\s*\(\s*|\bfrom\s+|\bimport\s+)(['"])(\.{1,2}/[^'"]+)\1""")
+        problems = []
+        for manifest_path in sorted((PROJECT_ROOT / "study_runner" / "plugins").glob("*/*/manifest.json")):
+            plugin_root = manifest_path.parent.resolve()
+            plugin = plugin_root.name
+            ui = json.loads(_read(manifest_path)).get("ui") or {}
+            declared = {*(ui.get("extensions") or {}).values(), *(ui.get("assets") or [])}
+            pending = sorted(entry for entry in declared if entry.endswith(".js"))
+            seen: set[str] = set()
+            while pending:
+                entry = pending.pop()
+                if entry in seen:
+                    continue
+                seen.add(entry)
+                for _, specifier in import_pattern.findall(_read(plugin_root / entry)):
+                    resolved = (plugin_root / entry).parent.joinpath(specifier).resolve()
+                    try:
+                        target = resolved.relative_to(plugin_root).as_posix()
+                    except ValueError:
+                        problems.append(f"{plugin}: {entry} imports {specifier}, outside the plugin folder")
+                        continue
+                    if target not in declared:
+                        problems.append(f"{plugin}: {entry} imports {target}, which the manifest does not declare")
+                    if resolved.is_file():
+                        pending.append(target)
+        self.assertEqual(problems, [], "list every imported file under ui.assets in the plugin's manifest.json")
+
     def test_admin_plugin_lists_have_no_recorder_or_worker_key_maps(self) -> None:
         for name in ("admin-controller.js", "admin-dashboard-controller.js"):
             source = _read(WEB / "scripts" / "admin" / name).lower()
