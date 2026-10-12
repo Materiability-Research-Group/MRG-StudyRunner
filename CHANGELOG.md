@@ -5,6 +5,8 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+## 1.7.21 - 2026-10-12
+
 ### Added
 
 - Notion targets can link shared participant, session, and card databases. Participant pages show filtered card views; card databases show comparisons by stable card ID, with revision markers and optional participant aggregates. Existing legacy mappings keep their previous upload behavior until explicitly migrated (Notion plugin 1.6.0).
