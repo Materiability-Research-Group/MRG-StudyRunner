@@ -301,6 +301,7 @@ recording code now, not plugins: `data_core/host/markers.py` and
 | `osc_touchdesigner/driver.py` | API-v5 process entry point (`run_plugin_driver("osc")`) | no |
 | `notion_upload/adapter.py` + `plugin.py` | Uploads result summaries to Notion (with offline queue) | careful |
 | `notion_upload/mapping.py` | The export mapping's evaluator: output catalog, reducers, column values for one session - no Notion client | careful |
+| `notion_upload/notion_ids.py` | Reads a Notion page or database ID from a pasted link or ID - standard library only | careful |
 | `notion_upload/ui/configurator.js` | The study-settings configurator modal: page tree, target list, column mapping | careful |
 | `notion_upload/ui/configurator-node-view.js` | Compiles one target's columns to a node graph and back | careful |
 | `notion_upload/ui/node-canvas.js` | Generic pan/zoom/wire node canvas, no dependency on Notion | careful |
@@ -372,7 +373,9 @@ one, unlike the plugin table above).
 | `settings/machine/recording-timing-panel.js` | Machine settings for recording start and end wait times | careful |
 | `settings/machine/certificate-settings-controller.js` | Certificate status, setup, export, and import, inside the machine settings shell | no |
 | `settings/machine/branding-settings-controller.js` | Upload and remove the group and funder logos, inside the machine settings shell | no |
-| `settings/study/study-settings-panel.js` | Per-study settings shell (editor only): sensors, participant, data destinations, export. Destination plugin settings (Notion, Nextcloud, ...) are generated here from the catalog, not from a per-destination file | careful |
+| `settings/study/study-settings-panel.js` | Per-study settings shell (editor only): sensors, participant, data destinations, export. Destination plugin settings (Notion, Nextcloud, ...) are generated from the catalog through `destination-block.js`, not from a per-destination file | careful |
+| `settings/study/destination-block.js` | One upload destination in the study settings: status line, credential, editable fields, target row with the plugin's configurator, closed "Technical details" | careful |
+| `settings/study/destination-rules.js` | Pure rules for that block: which actions and fields show, what an action still asks, the next missing step, an action's payload | careful |
 | `admin/session-timeline.js` | Renders completed-session sensor lanes and answer markers as offline SVG | careful |
 | `admin/sessions-browser.js` | Completed-session hub list, detail panel, and timeline data fetching | careful |
 | `admin/upload-monitor.js` | Corner progress widget for background finalization/uploads; a click opens the session's progress rail | careful |

@@ -69,15 +69,15 @@
       "contract_sha256": "edbf1a5eb1341da231294bdf214689d415f9ea8c78b31f06c61ff315369fdba7"
     },
     "nextcloud": {
-      "version": "1.1.0",
+      "version": "1.1.1",
       "path": "software/study_runner/plugins/destinations/nextcloud_upload",
-      "content_sha256": "d1b523f16ee5f375fb51720a18c55089b509ebd2b64255af2702b9d67ba7b9af",
+      "content_sha256": "c26aa342e33bc590573b0970ac871c6d07108717083b92701d18ca05b4ddefbf",
       "contract_sha256": "1aa2b4f4f583229552b8dc07021ab1a63385ed37f1efd1ccd71cbfc7467f6b60"
     },
     "notion": {
-      "version": "1.4.3",
+      "version": "1.5.0",
       "path": "software/study_runner/plugins/destinations/notion_upload",
-      "content_sha256": "d13c3ef73597a8e6ab56b961eecd306b85252dd9983f16bd6204a09ff8770d24",
+      "content_sha256": "45f6163f7b4c2917af78ec952dd2eeb9072cfaf387a0033db8b8cbd73e471bf8",
       "contract_sha256": "1aa2b4f4f583229552b8dc07021ab1a63385ed37f1efd1ccd71cbfc7467f6b60"
     },
     "osc": {

@@ -283,6 +283,14 @@
               <div class="update-progress" id="update-progress" hidden>
                 <div class="update-progress-fill" id="update-progress-fill"></div>
               </div>
+              <details class="update-log" id="update-log" hidden>
+                <summary data-i18n="update.logTitle">What the update logged</summary>
+                <pre class="update-log-tail" id="update-log-tail"></pre>
+                <div class="update-log-actions">
+                  <small class="settings-hint" id="update-log-path"></small>
+                  <button class="btn-secondary" type="button" id="btn-update-copy-log"><i class="iconoir-copy"></i> <span data-i18n="update.copyLog">Copy</span></button>
+                </div>
+              </details>
               <div class="dashboard-actions">
                 <button class="btn-secondary" type="button" id="btn-update-check"><i class="iconoir-refresh"></i> <span data-i18n="update.check">Check</span></button>
                 <button class="btn-primary" type="button" id="btn-update-download" hidden><i class="iconoir-download"></i> <span data-i18n="update.download">Download</span></button>

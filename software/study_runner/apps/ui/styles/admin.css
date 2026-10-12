@@ -548,6 +548,31 @@ body.admin::before { display: none; }
   background: var(--accent);
   transition: width var(--t-med) var(--fluid);
 }
+/* After a failed install: the helper's lines for that attempt, copyable. */
+.update-log {
+  font-size: .875rem;
+  color: var(--ink-70);
+}
+.update-log > summary { cursor: pointer; }
+.update-log-tail {
+  max-height: 240px;
+  overflow: auto;
+  margin: var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  font-size: .75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-sunken);
+  border-radius: var(--r-sm);
+}
+.update-log-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
 .btn-icon-only {
   width: var(--control-md);
   height: var(--control-md);
@@ -3312,6 +3337,112 @@ body.admin::before { display: none; }
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
+}
+
+/* One upload destination in Study settings > Data destinations
+   (destination-block.js): a status line, then "label | control" rows that
+   line up whatever a label's length, and read-only values in a closed
+   details section. */
+.destination-status {
+  margin: 0;
+  font-size: .875rem;
+  color: var(--ink-55);
+}
+.destination-status[data-state="todo"] { color: var(--warn); }
+.destination-status[data-state="ready"] { color: var(--pos); }
+.destination-rows {
+  display: grid;
+  gap: var(--s-3);
+  width: 100%;
+}
+.destination-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  column-gap: var(--s-4);
+  row-gap: var(--s-1);
+  align-items: center;
+}
+.destination-row-label {
+  font-family: var(--font-heading);
+  font-size: .688rem;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+.destination-row-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.destination-row-control.field { margin: 0; }
+.destination-row-control input:not([type="checkbox"]),
+.destination-row-control select {
+  flex: 1 1 220px;
+  width: auto;
+  min-width: 0;
+}
+.destination-row-hint,
+.destination-action-result {
+  grid-column: 2;
+  font-size: .8rem;
+  color: var(--ink-55);
+}
+.destination-row-hint[data-state="ok"] { color: var(--pos); }
+.destination-row-hint[data-state="missing"] { color: var(--warn); }
+.destination-target {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.destination-summary {
+  font-size: .875rem;
+  color: var(--ink-70);
+}
+.destination-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+/* The next missing step stands out, the way the guided sensor setup marks
+   its call to action. */
+.destination-block .btn-secondary.is-next-step {
+  background: var(--ink);
+  border-color: transparent;
+  color: #fff;
+}
+.destination-block input.is-next-step {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-16);
+}
+.destination-details {
+  width: 100%;
+  font-size: .875rem;
+  color: var(--ink-55);
+}
+.destination-details > summary {
+  cursor: pointer;
+  width: max-content;
+}
+.destination-detail-list {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  gap: var(--s-2) var(--s-4);
+  margin: var(--s-3) 0 0;
+}
+.destination-detail-list dd {
+  margin: 0;
+  min-width: 0;
+}
+.destination-detail-list code {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+@media (max-width: 640px) {
+  .destination-row,
+  .destination-detail-list { grid-template-columns: 1fr; }
+  .destination-row-hint,
+  .destination-action-result { grid-column: 1; }
 }
 .plugin-card-title-with-help {
   display: flex;

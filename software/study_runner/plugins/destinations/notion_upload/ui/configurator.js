@@ -60,6 +60,50 @@ const PRESETS = [
   { key: 'custom', title: 'Custom', description: 'Start from an empty target list.' },
 ];
 
+const SUMMARY_TEXT = {
+  en: {
+    quote: (title) => `“${title}”`,
+    rowLevels: { session: 'one row per session', participant: 'one row per participant', card: 'one row per card' },
+    columns: '{count} columns',
+    untitled: 'Untitled',
+    notConnected: 'not connected yet',
+    legacyConnected: 'Databases connected, columns as before',
+    legacyNew: 'As before: participant and session databases are created below the page',
+  },
+  de: {
+    quote: (title) => `„${title}“`,
+    rowLevels: { session: 'eine Zeile pro Sitzung', participant: 'eine Zeile pro Person', card: 'eine Zeile pro Karte' },
+    columns: '{count} Spalten',
+    untitled: 'Ohne Titel',
+    notConnected: 'noch nicht verbunden',
+    legacyConnected: 'Datenbanken verbunden, Spalten wie bisher',
+    legacyNew: 'Wie bisher: Datenbanken für Teilnehmende und Sitzungen entstehen unter der Seite',
+  },
+};
+
+/**
+ * One line for the study settings panel: where this study's results go.
+ * The generic destination block shows it next to "Configure…"; it opens
+ * nothing and changes nothing.
+ */
+export function summarize(settings = {}) {
+  const text = SUMMARY_TEXT[defaultNameLanguage()] || SUMMARY_TEXT.en;
+  const { targets } = normalizeMapping(settings?.export_mapping);
+  if (!targets.length) {
+    if (String(settings?.database_id || '').trim()) return text.legacyConnected;
+    return String(settings?.parent_page_id || '').trim() ? text.legacyNew : '';
+  }
+  return targets.map((target) => {
+    const parts = [
+      text.quote(target.title || text.untitled),
+      text.rowLevels[target.row_level],
+      text.columns.replace('{count}', String(Object.keys(target.columns).length)),
+    ];
+    if (!target.database_id) parts.push(text.notConnected);
+    return parts.join(' · ');
+  }).join('; ');
+}
+
 export function openConfigurator({ plugin, studyId, settings, configData, runAction, saveSettings, showToast }) {
   const state = {
     mapping: normalizeMapping(settings?.export_mapping),

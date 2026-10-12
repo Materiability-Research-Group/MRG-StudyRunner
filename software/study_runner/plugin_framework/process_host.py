@@ -346,6 +346,10 @@ class PluginProcessRuntime:
             command = self._command()
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
+            # The pipes below are read and written as UTF-8. Without this the
+            # child uses the system code page on Windows, and every umlaut or
+            # "•" in a message would arrive broken in either direction.
+            env["PYTHONIOENCODING"] = "utf-8"
             # Resolve from this module, not from the plugin directory: the entry
             # a driver needs on PYTHONPATH is the root that makes `study_runner`
             # importable, which is the root above this file. A plugin folder may

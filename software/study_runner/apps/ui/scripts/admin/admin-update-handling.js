@@ -225,6 +225,7 @@ export function createAdminUpdateHandling(context) {
     }
     setUpdateActions({});
     setUpdateProgress(null);
+    setUpdateLog({});
   }
   
   function renderUpdateStatus(status) {
@@ -299,6 +300,48 @@ export function createAdminUpdateHandling(context) {
     detail.textContent = message;
     setUpdateActions(status);
     setUpdateProgress(status.download);
+    setUpdateLog(status);
+  }
+
+  /**
+   * After a failed install, the helper's own lines for that attempt: the
+   * install script's error is in there, and the operator should not have
+   * to find the log file in the data folder first.
+   */
+  function setUpdateLog(status) {
+    const wrap = $('update-log');
+    const tail = $('update-log-tail');
+    if (!wrap || !tail) return;
+    const lines = Array.isArray(status?.log_tail) ? status.log_tail : [];
+    const show = status?.state === 'install_failed' && lines.length > 0;
+    wrap.hidden = !show;
+    if (!show) return;
+    tail.textContent = lines.join('\n');
+    const path = $('update-log-path');
+    if (path) {
+      path.textContent = status.log_file
+        ? t('update.logFile', 'Full log: {path}').replace('{path}', status.log_file)
+        : '';
+    }
+    wrap.open = true;
+    const copy = $('btn-update-copy-log');
+    if (copy && !copy.dataset.bound) {
+      copy.dataset.bound = 'true';
+      copy.addEventListener('click', () => void copyUpdateLog(tail));
+    }
+  }
+
+  async function copyUpdateLog(tail) {
+    try {
+      await navigator.clipboard.writeText(tail.textContent || '');
+      showToast(t('update.logCopied', 'Log copied'), 'success');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(tail);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+      showToast(t('update.logCopyFailed', 'Select the text and copy it by hand.'), 'info');
+    }
   }
   
   function setUpdateActions(status) {

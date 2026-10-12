@@ -1,7 +1,7 @@
 {
   "api_version": 5,
   "plugin_key": "notion",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "category": "storage",
   "config_key": "notion",
   "runtime": {
@@ -121,6 +121,7 @@
         },
         {
           "key": "list_children",
+          "surface": "configurator",
           "label": "List page children",
           "payload_schema": {
             "api_key": { "type": "string", "required": false, "max_length": 256 },
@@ -131,6 +132,7 @@
         },
         {
           "key": "describe_database",
+          "surface": "configurator",
           "label": "Describe a database",
           "payload_schema": {
             "api_key": { "type": "string", "required": false, "max_length": 256 },
@@ -140,6 +142,7 @@
         },
         {
           "key": "create_database",
+          "surface": "configurator",
           "label": "Create a database",
           "payload_schema": {
             "api_key": { "type": "string", "required": false, "max_length": 256 },
@@ -153,6 +156,7 @@
         },
         {
           "key": "describe_output_catalog",
+          "surface": "configurator",
           "label": "List fixed output sources for this study",
           "payload_schema": {
             "study_id": { "type": "string", "required": false, "max_length": 256 },
@@ -161,6 +165,7 @@
         },
         {
           "key": "describe_session_sources",
+          "surface": "configurator",
           "label": "List sources available from a session",
           "payload_schema": {
             "study_id": { "type": "string", "required": false, "max_length": 256 },
@@ -169,6 +174,7 @@
         },
         {
           "key": "preview_mapping",
+          "surface": "configurator",
           "label": "Preview with a session",
           "payload_schema": {
             "study_id": { "type": "string", "required": false, "max_length": 256 },
@@ -228,14 +234,17 @@
     "study": {
       "parent_page_id": {
         "type": "string",
+        "format": "notion_page",
         "default": "",
         "label_key": "pluginSettings.notion.parentPageId.label",
         "placeholder_key": "pluginSettings.notion.parentPageId.placeholder",
+        "description_key": "pluginSettings.notion.parentPageId.hint",
         "help_key": "pluginHelp.notion.parentPageId"
       },
       "database_id": {
         "type": "string",
         "default": "",
+        "read_only": true,
         "label_key": "pluginSettings.notion.databaseId.label",
         "placeholder_key": "pluginSettings.notion.databaseId.placeholder",
         "help_key": "pluginHelp.notion.databaseId"

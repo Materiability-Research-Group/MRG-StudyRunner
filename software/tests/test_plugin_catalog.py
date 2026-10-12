@@ -577,6 +577,28 @@ class PluginManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(PluginManifestError, "duplicate admin action key"):
             validate_and_normalize_manifest(payload, directory_name="fixture")
 
+    def test_admin_action_surface_is_panel_or_configurator(self) -> None:
+        payload = _manifest("fixture")
+        payload["capabilities"]["admin_actions"] = {
+            "actions": [
+                {"key": "test_connection", "label": "Test"},
+                {"key": "browse", "label": "Browse", "surface": "configurator"},
+            ]
+        }
+
+        actions = validate_and_normalize_manifest(payload, directory_name="fixture")[
+            "capability_config"
+        ]["admin_actions"]["actions"]
+
+        # Only a declared surface is kept, so other plugins' normalized
+        # manifests do not change; the panels treat a missing one as "panel".
+        self.assertNotIn("surface", actions[0])
+        self.assertEqual(actions[1]["surface"], "configurator")
+
+        payload["capabilities"]["admin_actions"]["actions"][1]["surface"] = "dashboard"
+        with self.assertRaisesRegex(PluginManifestError, "surface must be one of panel, configurator"):
+            validate_and_normalize_manifest(payload, directory_name="fixture")
+
     def test_admin_action_payload_contract_is_closed(self) -> None:
         payload = _manifest("fixture")
         payload["capabilities"]["admin_actions"] = {

@@ -51,7 +51,7 @@ def _save_study(client, study_id: str) -> None:
         "/api/config",
         json={
             "study_id": study_id,
-            "study_settings": {"notion_enabled": True, "notion_parent_page_id": "parent-1"},
+            "study_settings": {"notion_enabled": True, "notion_parent_page_id": "11111111111111111111111111111111"},
             "questions": [{"type": "participant-id"}, {"type": "finish"}],
         },
     )
@@ -191,14 +191,14 @@ class StudyCredentialRouteTests(unittest.TestCase):
 
         self.assertNotIn("must-not-travel", exported)
         # The target still travels, so the study runs on another computer.
-        self.assertIn("parent-1", exported)
+        self.assertIn("11111111111111111111111111111111", exported)
         settings = exported_payload["study_settings"]
         self.assertNotIn("notion_enabled", settings)
         self.assertNotIn("notion_parent_page_id", settings)
         self.assertTrue(settings["plugins"]["notion"]["enabled"])
         self.assertEqual(
             settings["plugins"]["notion"]["settings"]["parent_page_id"],
-            "parent-1",
+            "11111111111111111111111111111111",
         )
 
     def test_stored_key_is_used_for_uploads_of_that_study(self) -> None:

@@ -82,7 +82,12 @@ selection and session boundaries.
 - `runtime_modes`, `health`, and `admin_actions`: lifecycle, diagnostics, and
   generic manifest-declared operator actions. `health` gates whether the
   admin coordinator polls this plugin's status. `runtime_modes` declares
-  optional platform-mode support.
+  optional platform-mode support. An action marked `"surface": "configurator"`
+  is called only by the plugin's own configurator; the generic study settings
+  and dashboard panels never offer it as a raw form. A panel action never asks
+  for a payload field a study setting, the credential or a machine setting
+  already answers - the plugin applies its machine setting (a timeout, say)
+  itself.
 - `readiness_requirements`: distinct from `runtime_modes` above - what a study
   needs before this plugin can actually deliver results:
   `requires_secret`, `requires_settings` (a list; any one satisfies it), and
@@ -91,6 +96,10 @@ selection and session boundaries.
 - `participant_actions` and `participant_ingest`: closed allow-lists for
   participant lifecycle commands and browser payloads through generic routes.
 - `machine_settings`, `study_settings`, and `card_actions`: generic UI schemas.
+  A study field marked `read_only` or `advanced` leaves the main area of a
+  destination's block for its closed "Technical details". A `string` or `url`
+  field with a `format` is checked by the plugin's `validate_study_setting`
+  when the study is saved.
 - `upload_destination`: a background publication target with a required
   `publish_destination(context, payload)` handler.
 - `connection`: every `study_sensor` declares it. It names the device and the
@@ -106,9 +115,12 @@ Only manifests in the application package are trusted. The entry point is
 resolved inside its own folder after schema and duplicate checks pass.
 
 Optional rich UI stays inside the plugin. Declare entry modules as
-`ui.extensions.dashboard` and/or `ui.extensions.participant`; declare relative
-JavaScript and CSS files under `ui.assets`. Extension entries remain JavaScript
-modules. Discovery rejects absolute, traversing, unsupported, or missing paths,
+`ui.extensions.dashboard`, `ui.extensions.participant` and/or
+`ui.extensions.study_settings` (a configurator, opened by "Configure…"; it may
+also export `summarize(settings)` for the one-line target summary); declare
+relative JavaScript and CSS files under `ui.assets` - every file an extension
+module imports, or the browser cannot load the module (a test checks this).
+Extension entries remain JavaScript modules. Discovery rejects absolute, traversing, unsupported, or missing paths,
 and the asset endpoint serves only exact manifest entries. A failed extension
 is isolated and the generic UI remains usable. `ui.timeline.lane_aliases` and
 `preferred_channels` control completed-

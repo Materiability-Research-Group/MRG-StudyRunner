@@ -1,5 +1,5 @@
 {
-  "cross_package_import_edges": 540,
+  "cross_package_import_edges": 544,
   "cycle_count": 0,
   "cycle_pairs": [],
   "largest_file": {
@@ -20,7 +20,7 @@
       "path": ""
     },
     "apps.ui.admin": {
-      "lines": 921,
+      "lines": 923,
       "path": "software/study_runner/apps/ui/scripts/admin/admin-dashboard-controller.js"
     },
     "apps.ui.cards": {
@@ -32,7 +32,7 @@
       "path": "software/study_runner/apps/ui/scripts/participant/study-controller.js"
     },
     "apps.ui.settings": {
-      "lines": 740,
+      "lines": 650,
       "path": "software/study_runner/apps/ui/scripts/settings/study/study-settings-panel.js"
     },
     "apps.ui.shared": {
@@ -44,7 +44,7 @@
       "path": "software/study_runner/clock_core/assessment.py"
     },
     "contracts": {
-      "lines": 1530,
+      "lines": 1543,
       "path": "software/study_runner/contracts/manifest.py"
     },
     "data_core": {
@@ -64,7 +64,7 @@
       "path": "software/study_runner/data_core/worker/lsl_recording.py"
     },
     "plugin_framework": {
-      "lines": 1024,
+      "lines": 1028,
       "path": "software/study_runner/plugin_framework/process_host.py"
     },
     "plugins": {
@@ -76,7 +76,7 @@
       "path": "software/study_runner/plugins/cards/affect_map/plugin.py"
     },
     "plugins.destinations": {
-      "lines": 1547,
+      "lines": 1550,
       "path": "software/study_runner/plugins/destinations/notion_upload/adapter.py"
     },
     "plugins.outputs": {
@@ -96,33 +96,33 @@
       "path": "software/study_runner/shared/system_clock_probe.py"
     },
     "updates": {
-      "lines": 297,
-      "path": "software/study_runner/updates/archive_update.py"
+      "lines": 303,
+      "path": "software/study_runner/updates/installer.py"
     }
   },
   "lines_per_package": {
     "apps": 0,
     "apps.server": 5483,
     "apps.ui": 0,
-    "apps.ui.admin": 6274,
+    "apps.ui.admin": 6319,
     "apps.ui.cards": 4904,
     "apps.ui.participant": 3445,
-    "apps.ui.settings": 2042,
+    "apps.ui.settings": 2291,
     "apps.ui.shared": 3172,
     "clock_core": 654,
-    "contracts": 3079,
+    "contracts": 3092,
     "data_core": 16,
     "data_core.contract": 1184,
     "data_core.host": 7056,
     "data_core.worker": 2585,
-    "plugin_framework": 4220,
+    "plugin_framework": 4224,
     "plugins": 0,
     "plugins.cards": 1465,
-    "plugins.destinations": 4074,
+    "plugins.destinations": 4188,
     "plugins.outputs": 142,
     "plugins.sensors": 11598,
-    "runtime_core": 16337,
+    "runtime_core": 16365,
     "shared": 466,
-    "updates": 696
+    "updates": 744
   }
 }

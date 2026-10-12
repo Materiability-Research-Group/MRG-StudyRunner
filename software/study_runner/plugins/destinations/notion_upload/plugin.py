@@ -108,9 +108,12 @@ def _run_admin_action(
     api_key = str(payload.get("api_key") or "").strip() or context.secret("notion", study_id)
 
     if action_key == "test_connection":
+        # The study settings panel never asks for a timeout: it is a machine
+        # setting, so an omitted value means "the one this computer uses".
+        machine_timeout = config_section(context, "notion").get("timeout_seconds") or 10
         return adapter.test_connection(
             api_key=api_key,
-            timeout_seconds=int(payload.get("timeout_seconds") or 10),
+            timeout_seconds=int(payload.get("timeout_seconds") or machine_timeout),
             parent_page_id=str(payload.get("parent_page_id") or ""),
             database_id=str(payload.get("database_id") or ""),
         )
@@ -148,12 +151,21 @@ def _run_admin_action(
 
 
 def _validate_setting(field_name: str, encoded_value: str) -> None:
-    """`Plugin.validate_study_setting`: the "object" field's own shape.
+    """`Plugin.validate_study_setting`: the shape of this plugin's own fields.
 
-    Called by `_validate_plugin_study_settings` with the field JSON-encoded,
-    the same hook a "url" field with a declared format uses for its own
-    validation - see runtime_core/studies/validation.py.
+    Called by `_validate_plugin_study_settings` for a field that declares a
+    format (the parent page, as typed) and for the "object" field (the export
+    mapping, JSON-encoded) - see runtime_core/studies/validation.py.
     """
+    if field_name == "parent_page_id":
+        from .notion_ids import notion_id_from_input
+
+        if encoded_value.strip() and not notion_id_from_input(encoded_value):
+            raise ValueError(
+                "is not a Notion page link or ID. In Notion, open the page, choose "
+                "••• > Copy link, and paste the link here."
+            )
+        return
     if field_name != "export_mapping":
         return
     import json

@@ -268,5 +268,19 @@ class NextcloudServiceTests(unittest.TestCase):
                 )
 
 
+class NextcloudAdminActionTests(unittest.TestCase):
+    def test_test_connection_uses_the_machine_timeout_when_the_panel_sends_none(self) -> None:
+        # The study settings panel never asks for a timeout; it is a machine setting.
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from study_runner.plugins.destinations.nextcloud_upload import plugin, webdav_client
+
+        context = SimpleNamespace(hardware_config={"nextcloud": {"timeout_seconds": 25}}, secret=lambda *_: "pw")
+        with patch.object(webdav_client, "test_connection", return_value={"ok": True}) as called:
+            plugin._run_admin_action(context, "test_connection", {"share_link": "https://cloud.example/s/token"})
+        self.assertEqual(called.call_args.kwargs["timeout_seconds"], 25)
+
+
 if __name__ == "__main__":
     unittest.main()

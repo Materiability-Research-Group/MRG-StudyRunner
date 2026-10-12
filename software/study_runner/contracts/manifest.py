@@ -525,6 +525,10 @@ def _normalize_capability_config(name: str, config: dict[str, Any]) -> dict[str,
 # core decides which role is the next step (the call to action) from the
 # plugin's reported connection state, so every sensor guides the same way.
 ADMIN_ACTION_ROLES = ("select", "scan", "measure_signal", "initialize", "auto_reconnect")
+# Where an action may appear: "panel" (the default) lets the generic study
+# settings and dashboard panels offer it as a button; "configurator" keeps it
+# for the plugin's own configurator, which calls it with values it built.
+ADMIN_ACTION_SURFACES = ("panel", "configurator")
 
 
 def _normalize_connection_capability(config: dict[str, Any]) -> dict[str, Any]:
@@ -902,6 +906,7 @@ def _normalize_admin_actions(config: dict[str, Any]) -> dict[str, Any]:
         "any_of_required",
         "instances",
         "role",
+        "surface",
     }
     for index, raw_action in enumerate(raw_actions, start=1):
         if not isinstance(raw_action, dict):
@@ -970,6 +975,14 @@ def _normalize_admin_actions(config: dict[str, Any]) -> dict[str, Any]:
                 )
             seen_roles.add(role)
             action["role"] = role
+        if "surface" in raw_action:
+            surface = raw_action.get("surface")
+            if surface not in ADMIN_ACTION_SURFACES:
+                raise PluginManifestError(
+                    f"admin_actions.actions[{index}].surface must be one of "
+                    + ", ".join(ADMIN_ACTION_SURFACES)
+                )
+            action["surface"] = surface
         actions.append(action)
     result: dict[str, Any] = {"actions": actions}
     if rendered_by_dashboard:

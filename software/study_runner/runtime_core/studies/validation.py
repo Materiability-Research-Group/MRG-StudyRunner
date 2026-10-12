@@ -959,6 +959,10 @@ def _validate_plugin_study_settings(
                     )
                 if field_type == "url" and value:
                     _validate_manifest_url(value, str(field.get("format") or ""), path, plugin_key, name)
+                elif field_type == "string" and value and field.get("format"):
+                    # A plain text field can declare a plugin-owned shape too,
+                    # e.g. "a page link or its ID".
+                    _validate_plugin_format(value, str(field["format"]), path, plugin_key, name)
                 settings[name] = value
             elif field_type == "boolean":
                 settings[name] = normalize_boolean(raw_value)
@@ -1014,25 +1018,36 @@ def _validate_manifest_url(
     about that field.
     """
     if format_name:
-        from study_runner.plugin_framework.registry import get_plugin
-
-        plugin = get_plugin(plugin_key)
-        validator = plugin.validate_study_setting if plugin else None
-        if validator is None:
-            raise ValidationError(
-                f"{path}: plugin {plugin_key!r} declares format {format_name!r} "
-                "but has no validator."
-            )
-        try:
-            validator(field_name, value)
-        except ValueError as error:
-            raise ValidationError(f"{path}: {error}") from error
+        _validate_plugin_format(value, format_name, path, plugin_key, field_name)
         return
     from urllib.parse import urlsplit
 
     parsed = urlsplit(value)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValidationError(f"{path} must be an HTTP(S) URL.")
+
+
+def _validate_plugin_format(
+    value: str,
+    format_name: str,
+    path: str,
+    plugin_key: str,
+    field_name: str,
+) -> None:
+    """Let the plugin that declared a field's format check the value's shape."""
+    from study_runner.plugin_framework.registry import get_plugin
+
+    plugin = get_plugin(plugin_key)
+    validator = plugin.validate_study_setting if plugin else None
+    if validator is None:
+        raise ValidationError(
+            f"{path}: plugin {plugin_key!r} declares format {format_name!r} "
+            "but has no validator."
+        )
+    try:
+        validator(field_name, value)
+    except ValueError as error:
+        raise ValidationError(f"{path}: {error}") from error
 
 
 def _participant_field_options(questions: list[dict[str, Any]], field_key: str) -> list[str]:

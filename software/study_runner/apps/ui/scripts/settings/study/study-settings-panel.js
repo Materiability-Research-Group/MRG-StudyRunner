@@ -20,7 +20,7 @@ import {
   normalizeStudySettings,
 } from '../../shared/study-settings.js';
 import { bindMediaEditor, collectMediaEditor, renderMediaEditor } from '../../shared/media-editor.js';
-import { fieldLabel, fieldPlaceholder, openPluginHelp, renderPluginHelpButton } from '../../shared/plugin-help.js';
+import { fieldLabel, openPluginHelp } from '../../shared/plugin-help.js';
 import {
   PLUGIN_UI_SURFACES,
   getPluginCatalog,
@@ -29,6 +29,14 @@ import {
   loadPluginUiExtension,
   visiblePluginsWithCapability,
 } from '../../shared/plugin-catalog.js';
+import {
+  fillDestinationSummary,
+  renderDestinationBlock,
+  renderSettingControl,
+  settingHint,
+  updateDestinationStatus,
+} from './destination-block.js';
+import { buildActionPayload } from './destination-rules.js';
 
 let callbacks = {};
 let initialized = false;
@@ -136,9 +144,9 @@ export function translateOpenStudySettingsPanel() {
   const focusIndex = before.indexOf(document.activeElement);
   renderStudySettingsPanel();
   const after = [...root.querySelectorAll('input, select, textarea')];
-  const byId = new Map(draft.filter((item) => item.id).map((item) => [item.id, item]));
+  const draftById = new Map(draft.filter((item) => item.id).map((item) => [item.id, item]));
   after.forEach((input, index) => {
-    const saved = (input.id && byId.get(input.id)) || draft[index];
+    const saved = (input.id && draftById.get(input.id)) || draft[index];
     if (!saved || saved.type !== input.type || saved.name !== input.name) return;
     input.value = saved.value;
     if ('checked' in input) input.checked = saved.checked;
@@ -215,28 +223,18 @@ function renderDestinationPlugins(settings) {
     container.innerHTML = `<p class="settings-hint">${escapeHtml(t('studySettings.noDestinationPlugins', 'No upload destination plugins are installed.'))}</p>`;
     return;
   }
-  container.innerHTML = plugins.map((plugin) => {
-    const key = String(plugin.plugin_key);
-    const configured = settings.plugins?.[key] || {};
-    const enabled = configured.enabled === true;
-    const schema = plugin.study_settings_schema || plugin.settings?.study || {};
-    return `
-      <div class="stimulus-toggle-row study-plugin-row${enabled ? '' : ' stimulus-toggle-row--off'}" data-study-destination="${escapeHtml(key)}">
-        <div class="study-plugin-main">
-          <span class="stimulus-toggle-text"><strong>${escapeHtml(plugin.ui?.label || key)}</strong>${plugin.ui?.description ? `<small>${escapeHtml(plugin.ui.description)}</small>` : ''}</span>
-          <span class="study-plugin-controls">
-            ${renderPluginHelpButton(plugin)}
-            <label class="switch" aria-label="${escapeHtml(plugin.ui?.label || key)}"><input type="checkbox" data-plugin-enabled ${enabled ? 'checked' : ''}><span class="switch-slider"></span></label>
-          </span>
-        </div>
-        ${renderPluginStudyFields(key, schema, configured.settings || {})}
-        ${renderStudyPluginCredential(plugin)}
-        ${renderStudyPluginConfigurator(plugin)}
-        ${renderStudyPluginActions(plugin, schema)}
-      </div>`;
-  }).join('');
+  container.innerHTML = plugins
+    .map((plugin) => renderDestinationBlock(plugin, settings.plugins?.[String(plugin.plugin_key)] || {}))
+    .join('');
   container.querySelectorAll('[data-plugin-enabled]').forEach((input) => {
     input.addEventListener('change', syncDestinationControls);
+  });
+  container.querySelectorAll('[data-plugin-setting]').forEach((input) => {
+    input.addEventListener('input', () => refreshDestinationStatus(input.closest('[data-study-destination]')));
+  });
+  container.querySelectorAll('[data-study-destination]').forEach((row) => {
+    const pluginKey = row.dataset.studyDestination;
+    void fillDestinationSummary(row, getPluginCatalog().plugins_by_key[pluginKey], savedDestinationSettings(pluginKey));
   });
   syncDestinationControls();
 }
@@ -246,6 +244,22 @@ function syncDestinationControls() {
     const enabled = Boolean(row.querySelector('[data-plugin-enabled]')?.checked);
     row.classList.toggle('stimulus-toggle-row--off', !enabled);
     row.querySelectorAll('[data-plugin-setting]').forEach((input) => { input.disabled = !enabled; });
+    refreshDestinationStatus(row);
+  });
+}
+
+/** Saved settings of one destination, as the last save left them. */
+function savedDestinationSettings(pluginKey) {
+  return normalizeStudySettings(callbacks.getStudyConfig?.().study_settings).plugins?.[pluginKey]?.settings || {};
+}
+
+function refreshDestinationStatus(row, credentialConfigured) {
+  if (!row) return;
+  const plugin = getPluginCatalog().plugins_by_key[row.dataset.studyDestination];
+  if (!plugin) return;
+  if (credentialConfigured !== undefined) row.dataset.credentialConfigured = credentialConfigured ? 'yes' : 'no';
+  updateDestinationStatus(row, plugin, savedDestinationSettings(row.dataset.studyDestination), {
+    credentialConfigured: row.dataset.credentialConfigured !== 'no',
   });
 }
 
@@ -321,82 +335,32 @@ function renderSensorPlugin(plugin, settings) {
         <span>${escapeHtml(t('studySettings.requiredSensor', 'Required at study start'))}</span>
         <label class="switch" aria-label="${escapeHtml(t('studySettings.requiredSensor', 'Required at study start'))}"><input type="checkbox" data-plugin-required ${required ? 'checked' : ''}><span class="switch-slider"></span></label>
       </div>
-      ${renderPluginStudyFields(key, studySchema, configured.settings || {})}
+      ${renderPluginStudyFields(studySchema, configured.settings || {})}
     </div>`;
 }
 
-function renderPluginStudyFields(pluginKey, schema, values) {
+function renderPluginStudyFields(schema, values) {
   // An "object" field (an opaque, plugin-owned JSON document) is too shaped
-  // for a generic input; its own configurator button renders it instead -
-  // see renderStudyPluginConfigurator.
+  // for a generic input; the plugin's own configurator edits it.
   const entries = Object.entries(schema || {}).filter(([, field]) => field.type !== 'object');
   if (!entries.length) return '';
   return `<div class="study-plugin-fields">${entries.map(([name, field]) => {
-    const value = values[name] ?? field.default ?? '';
-    const label = fieldLabel(name, field);
-    const hint = field.description_key
-      ? t(field.description_key, field.description || '')
-      : field.description || '';
-    const disabled = field.read_only === true ? ' disabled' : '';
-    const required = field.required === true ? ' required' : '';
+    const label = escapeHtml(fieldLabel(name, field));
+    const hint = settingHint(field);
+    const control = renderSettingControl(name, field, values[name]);
     if (field.type === 'boolean') {
-      return `<label class="switch-row"><span class="switch-row-text"><span>${escapeHtml(label)}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</span><span class="switch"><input type="checkbox" data-plugin-setting="${escapeHtml(name)}" data-setting-type="boolean" ${value ? 'checked' : ''}${disabled}><span class="switch-slider"></span></span></label>`;
+      return `<label class="switch-row"><span class="switch-row-text"><span>${label}</span>${hint ? `<small>${escapeHtml(hint)}</small>` : ''}</span>${control}</label>`;
     }
-    if (field.type === 'choice') {
-      return `<label class="field"><span>${escapeHtml(label)}</span><select data-plugin-setting="${escapeHtml(name)}" data-setting-type="choice"${disabled}${required}>${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(option) === String(value) ? 'selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select>${hint ? `<small class="settings-hint">${escapeHtml(hint)}</small>` : ''}</label>`;
-    }
-    const inputType = ['number', 'url'].includes(field.type) ? field.type : 'text';
-    const limits = field.type === 'number'
-      ? `${field.minimum !== undefined ? ` min="${escapeHtml(field.minimum)}"` : ''}${field.maximum !== undefined ? ` max="${escapeHtml(field.maximum)}"` : ''}`
-      : '';
-    const example = fieldPlaceholder(field);
-    const placeholder = example ? ` placeholder="${escapeHtml(example)}"` : '';
     const unit = field.unit ? ` <span class="settings-unit">(${escapeHtml(field.unit)})</span>` : '';
-    return `<label class="field"><span>${escapeHtml(label)}${unit}</span><input type="${inputType}" data-plugin-setting="${escapeHtml(name)}" data-setting-type="${escapeHtml(field.type || 'string')}" value="${escapeHtml(value)}"${limits}${placeholder}${disabled}${required}>${hint ? `<small class="settings-hint">${escapeHtml(hint)}</small>` : ''}</label>`;
+    return `<label class="field"><span>${label}${unit}</span>${control}${hint ? `<small class="settings-hint">${escapeHtml(hint)}</small>` : ''}</label>`;
   }).join('')}</div>`;
 }
 
-function renderStudyPluginCredential(plugin) {
-  const credential = plugin.capability_config?.credentials || {};
-  if (!credential.config_field || credential.per_study !== true) return '';
-  const pluginKey = String(plugin.plugin_key);
-  const label = fieldLabel(credential.config_field, credential);
-  const example = fieldPlaceholder(credential);
-  return `
-    <div class="study-plugin-credential" data-study-plugin-credential="${escapeHtml(pluginKey)}">
-      <label class="field">
-        <span>${escapeHtml(label)}</span>
-        <input type="password" autocomplete="new-password" data-study-plugin-credential-input${example ? ` placeholder="${escapeHtml(example)}"` : ''}>
-        <small class="settings-hint" data-study-plugin-credential-state>${escapeHtml(t('studySettings.credentialLoading', 'Checking saved credential...'))}</small>
-      </label>
-      <div class="dashboard-actions">
-        <button class="btn-secondary" type="button" data-save-study-plugin-credential="${escapeHtml(pluginKey)}">
-          <i class="iconoir-key"></i> ${escapeHtml(t('studySettings.saveCredential', 'Save credential for this study'))}
-        </button>
-        <button class="btn-secondary" type="button" data-clear-study-plugin-credential="${escapeHtml(pluginKey)}">
-          <i class="iconoir-trash"></i> ${escapeHtml(t('studySettings.clearCredential', "Delete this study's credential"))}
-        </button>
-      </div>
-      <small class="settings-hint">${escapeHtml(t('studySettings.credentialPrivateHint', 'Credentials stay in the local secret store and are never written to the study file.'))}</small>
-    </div>`;
-}
-
 /**
- * A plugin declaring ui.extensions.study_settings gets a button that opens
- * its own configurator module instead of a generic field - see
- * renderPluginStudyFields, which skips that same "object" field for the
- * same reason.
+ * A plugin declaring ui.extensions.study_settings opens its own
+ * configurator module for what a generic field cannot show; the destination
+ * block offers it as "Configure…" next to the target summary.
  */
-function renderStudyPluginConfigurator(plugin) {
-  if (!plugin.ui?.extensions?.study_settings) return '';
-  return `
-    <div class="study-plugin-configurator">
-      <button class="btn-secondary" type="button" data-open-study-plugin-configurator="${escapeHtml(plugin.plugin_key)}">
-        <i class="iconoir-settings"></i> ${escapeHtml(t('studySettings.openConfigurator', 'Configure…'))}
-      </button>
-    </div>`;
-}
-
 async function openStudyPluginConfigurator(pluginKey) {
   const plugin = getPluginCatalog().plugins_by_key[pluginKey];
   if (!plugin) return;
@@ -452,31 +416,6 @@ async function saveStudyPluginSettings(pluginKey, nextSettings) {
   renderStudySettingsPanel();
 }
 
-function renderStudyPluginActions(plugin, studySchema) {
-  const actions = plugin.capability_config?.admin_actions?.actions || [];
-  if (!actions.length) return '';
-  const credentialField = String(plugin.capability_config?.credentials?.config_field || '');
-  return `<div class="study-plugin-actions">${actions.map((action) => {
-    const additionalFields = Object.entries(action.payload_schema || {})
-      .filter(([name]) => !Object.prototype.hasOwnProperty.call(studySchema || {}, name)
-        && name !== credentialField && name !== 'study_id')
-      .map(([name, field]) => renderActionField(name, field))
-      .join('');
-    return `
-      <div class="study-plugin-action" data-study-plugin-action-form="${escapeHtml(action.key)}">
-        ${additionalFields}
-        <div class="dashboard-actions">
-          <button class="btn-secondary${action.danger ? ' plugin-admin-action--danger' : ''}" type="button"
-                  data-study-plugin-action="${escapeHtml(action.key)}"
-                  data-study-plugin-key="${escapeHtml(plugin.plugin_key)}">
-            <i class="iconoir-ev-plug"></i> ${escapeHtml(action.label || humanize(action.key))}
-          </button>
-        </div>
-        <small class="settings-hint" data-study-plugin-action-result="${escapeHtml(action.key)}">${escapeHtml(action.description || '')}</small>
-      </div>`;
-  }).join('')}</div>`;
-}
-
 /**
  * Plugins answer an action with ok:false plus an error or a list of named
  * checks. Show every check, and never report a failed test as success.
@@ -494,22 +433,6 @@ export function describeActionResult(details = {}) {
   return { ok, summary, html: lines };
 }
 
-function renderActionField(name, field) {
-  const label = humanize(name);
-  const required = field.required === true ? ' required' : '';
-  if (field.type === 'boolean') {
-    return `<label class="switch-row"><span>${escapeHtml(label)}</span><span class="switch"><input type="checkbox" data-plugin-action-field="${escapeHtml(name)}" data-setting-type="boolean"><span class="switch-slider"></span></span></label>`;
-  }
-  if (Array.isArray(field.enum) && field.enum.length) {
-    return `<label class="field"><span>${escapeHtml(label)}</span><select data-plugin-action-field="${escapeHtml(name)}" data-setting-type="${escapeHtml(field.type || 'string')}"${required}><option value=""></option>${field.enum.map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('')}</select></label>`;
-  }
-  const inputType = ['integer', 'number'].includes(field.type) ? 'number' : 'text';
-  const step = field.type === 'integer' ? ' step="1"' : field.type === 'number' ? ' step="any"' : '';
-  const minimum = field.minimum !== undefined ? ` min="${escapeHtml(field.minimum)}"` : '';
-  const maximum = field.maximum !== undefined ? ` max="${escapeHtml(field.maximum)}"` : '';
-  return `<label class="field"><span>${escapeHtml(label)}</span><input type="${inputType}" data-plugin-action-field="${escapeHtml(name)}" data-setting-type="${escapeHtml(field.type || 'string')}"${step}${minimum}${maximum}${required}></label>`;
-}
-
 async function refreshStudyPluginCredentialStates() {
   const studyId = String(callbacks.getStudyConfig?.().study_id || callbacks.getCurrentStudyName?.() || '').trim();
   if (!studyId) return;
@@ -525,6 +448,8 @@ async function refreshStudyPluginCredentialStates() {
       target.textContent = state.configured
         ? t('studySettings.credentialConfigured', 'Configured locally ({scope})').replace('{scope}', state.scope || state.source || 'local')
         : t('studySettings.credentialMissing', 'No credential configured');
+      target.dataset.state = state.configured ? 'ok' : 'missing';
+      refreshDestinationStatus(control.closest('[data-study-destination]'), Boolean(state.configured));
     });
   } catch (error) {
     console.error('[settings] Could not load study credential state:', error);
@@ -574,35 +499,24 @@ async function runStudyPluginAction(button) {
   if (action.confirm && !window.confirm(action.description || action.label || actionKey)) return;
 
   const row = button.closest('[data-study-destination]');
-  const actionForm = button.closest('[data-study-plugin-action-form]');
-  const credentialField = String(plugin.capability_config?.credentials?.config_field || '');
-  const payload = {};
-  // Lets a plugin test with the credential stored for this study.
-  const studyId = String(callbacks.getStudyConfig?.().study_id || '').trim();
-  if (studyId && Object.prototype.hasOwnProperty.call(action.payload_schema || {}, 'study_id')) {
-    payload.study_id = studyId;
-  }
-  Object.entries(action.payload_schema || {}).forEach(([name, field]) => {
-    if (name === 'study_id') return;
-    let input = [...(row?.querySelectorAll('[data-plugin-setting]') || [])]
-      .find((candidate) => candidate.dataset.pluginSetting === name);
-    if (!input && name === credentialField) input = row?.querySelector('[data-study-plugin-credential-input]');
-    if (!input) {
-      input = [...(actionForm?.querySelectorAll('[data-plugin-action-field]') || [])]
-        .find((candidate) => candidate.dataset.pluginActionField === name);
-    }
-    if (!input) return;
-    const type = field.type || input.dataset.settingType || 'string';
-    const raw = type === 'boolean' ? Boolean(input.checked) : String(input.value || '');
-    if (raw === '' && field.required !== true) return;
-    payload[name] = type === 'integer'
-      ? Number.parseInt(raw, 10)
-      : type === 'number'
-        ? Number(raw)
-        : raw;
+  const inputs = {};
+  row?.querySelectorAll('[data-plugin-setting]').forEach((input) => {
+    inputs[input.dataset.pluginSetting] = input.type === 'checkbox' ? input.checked : input.value;
+  });
+  row?.querySelectorAll(`[data-plugin-action-field][data-action-key="${CSS.escape(actionKey)}"]`).forEach((input) => {
+    inputs[input.dataset.pluginActionField] = input.type === 'checkbox' ? input.checked : input.value;
+  });
+  // The study id lets a plugin use the credential stored for this study; a
+  // key typed but not yet saved lets the operator test it before saving.
+  const payload = buildActionPayload(action, plugin, {
+    studyId: String(callbacks.getStudyConfig?.().study_id || '').trim(),
+    inputs,
+    saved: savedDestinationSettings(pluginKey),
+    credentialValue: String(row?.querySelector('[data-study-plugin-credential-input]')?.value || ''),
   });
 
-  const result = actionForm?.querySelector(`[data-study-plugin-action-result="${actionKey}"]`);
+  const result = row?.querySelector(`[data-study-plugin-action-result="${CSS.escape(actionKey)}"]`);
+  if (result) result.hidden = false;
   button.disabled = true;
   try {
     const response = await postJson(
@@ -733,8 +647,4 @@ async function saveDestinationPlugins() {
   });
   callbacks.setStudySettings?.({ ...current, plugins });
   await callbacks.saveStudyConfig?.({ successMessage: t('studySettings.saved', 'Study settings saved') });
-}
-
-function humanize(value) {
-  return String(value || '').replace(/[._-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }

@@ -211,10 +211,26 @@ class NotionParticipantMetadataTests(unittest.TestCase):
 
 class NotionValidateStudySettingTests(unittest.TestCase):
     """`Plugin.validate_study_setting`, the hook validation.py calls for the
-    "object" export_mapping field - see runtime_core/studies/validation.py."""
+    parent page (a field with a format) and the "object" export_mapping
+    field - see runtime_core/studies/validation.py."""
 
-    def test_ignores_every_field_but_export_mapping(self) -> None:
-        plugin.PLUGIN.validate_study_setting("parent_page_id", "not json at all")  # does not raise
+    PAGE_ID = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+
+    def test_ignores_fields_it_does_not_own(self) -> None:
+        plugin.PLUGIN.validate_study_setting("database_id", "not json at all")  # does not raise
+
+    def test_accepts_a_pasted_link_or_an_id_as_the_parent_page(self) -> None:
+        for value in (
+            self.PAGE_ID,
+            "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+            f"https://www.notion.so/team/Study-results-{self.PAGE_ID}?source=copy_link",
+            "",
+        ):
+            plugin.PLUGIN.validate_study_setting("parent_page_id", value)  # does not raise
+
+    def test_rejects_a_parent_page_without_an_id_and_says_how_to_get_one(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Copy link"):
+            plugin.PLUGIN.validate_study_setting("parent_page_id", "Study results")
 
     def test_rejects_malformed_json(self) -> None:
         with self.assertRaises(ValueError):
@@ -252,6 +268,71 @@ class NotionAdminActionDispatchTests(unittest.TestCase):
             api_key="study-key", parent_page_id="page-1", title="X", row_level="session", columns_json="[]",
             key_column="",
         )
+
+    def test_test_connection_uses_the_machine_timeout_when_the_panel_sends_none(self) -> None:
+        # The study settings panel never asks for a timeout; it is a machine setting.
+        context = SimpleNamespace(
+            hardware_config={"notion": {"timeout_seconds": 42}}, data_dir=Path("/tmp"), secret=lambda *_: "study-key",
+        )
+        with patch.object(adapter, "test_connection", return_value={"ok": True}) as called:
+            plugin._run_admin_action(context, "test_connection", {"parent_page_id": "page-1"})
+        self.assertEqual(called.call_args.kwargs["timeout_seconds"], 42)
+
+
+class NotionParentPageIsCheckedWhenTheStudyIsSavedTests(unittest.TestCase):
+    """validation.py hands a text field with a declared format to its plugin."""
+
+    def _config(self, parent_page_id: str) -> dict:
+        return validate_and_normalize_config({
+            "study_id": "Notion Parent Page",
+            "questions": [{"type": "participant-id", "prompt": "Identify yourself."}, {"type": "finish"}],
+            "study_settings": {
+                "plugins": {"notion": {"enabled": True, "settings": {"parent_page_id": parent_page_id}}},
+            },
+        })
+
+    def test_a_pasted_link_is_accepted_and_kept_as_typed(self) -> None:
+        link = "https://www.notion.so/team/Results-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d?source=copy_link"
+        config = self._config(link)
+        self.assertEqual(config["study_settings"]["plugins"]["notion"]["settings"]["parent_page_id"], link)
+
+    def test_text_without_a_page_id_is_refused_with_a_clear_message(self) -> None:
+        from study_runner.runtime_core.studies.validation import ValidationError
+
+        with self.assertRaisesRegex(ValidationError, "parent_page_id: is not a Notion page link or ID") as raised:
+            self._config("Study results")
+        # The message crosses the plugin process boundary intact, "•••" included.
+        self.assertIn("••• > Copy link", str(raised.exception))
+
+
+class NotionIdFromInputTests(unittest.TestCase):
+    """Operators paste the parent page as a whole "Copy link" link."""
+
+    ID = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d"
+
+    def test_reads_the_id_from_ids_and_links(self) -> None:
+        from study_runner.plugins.destinations.notion_upload.notion_ids import notion_id_from_input
+
+        cases = {
+            self.ID: self.ID,
+            "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d": self.ID,
+            f"https://www.notion.so/team/Study-results-{self.ID}?source=copy_link": self.ID,
+            # Removing every dash would glue a hex-letter title to the ID.
+            f"https://www.notion.so/Cafe-{self.ID}": self.ID,
+            f"notion.so/team/Page-{self.ID}?pvs=4": self.ID,
+            f"https://www.notion.so/team/{'0' * 32}?v={'f' * 32}&p={self.ID}&pm=s": self.ID,
+            f"https://www.notion.so/team/Study-results-{self.ID.upper()}/": self.ID,
+            "Study results": "",
+            "https://example.com/page": "",
+            "": "",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(notion_id_from_input(value), expected)
+
+    def test_the_adapter_reads_pasted_links_wherever_it_takes_an_id(self) -> None:
+        self.assertEqual(adapter._notion_id(f"https://www.notion.so/team/Results-{self.ID}"), self.ID)
+        self.assertEqual(adapter._notion_id("1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d"), self.ID)
 
 
 class NotionDescribeOutputCatalogTests(unittest.TestCase):

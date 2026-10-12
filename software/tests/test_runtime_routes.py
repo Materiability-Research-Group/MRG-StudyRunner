@@ -798,7 +798,7 @@ class RuntimeRoutesTests(unittest.TestCase):
                     "questions": [{"type": "participant-id"}, {"type": "finish"}],
                 }
 
-            first = client.post("/api/config", json=config("page-a", "db-1"))
+            first = client.post("/api/config", json=config("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "db-1"))
             self.assertEqual(first.status_code, 200)
             notion_settings = first.get_json()["config"]["study_settings"]["plugins"]["notion"]["settings"]
             self.assertEqual(notion_settings["database_id"], "db-1")
@@ -806,11 +806,11 @@ class RuntimeRoutesTests(unittest.TestCase):
             # The operator changes only the parent page; database_id and
             # data_source_id arrive unchanged because they are read-only in
             # the settings UI.
-            second = client.post("/api/config", json=config("page-b", "db-1"))
+            second = client.post("/api/config", json=config("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "db-1"))
 
         self.assertEqual(second.status_code, 200)
         saved = second.get_json()["config"]["study_settings"]["plugins"]["notion"]["settings"]
-        self.assertEqual(saved["parent_page_id"], "page-b")
+        self.assertEqual(saved["parent_page_id"], "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
         self.assertEqual(saved["database_id"], "", "a database under the old parent page must not be reused")
         self.assertEqual(saved["data_source_id"], "")
 
@@ -845,10 +845,10 @@ class RuntimeRoutesTests(unittest.TestCase):
                     "questions": [{"type": "participant-id"}, {"type": "finish"}],
                 }
 
-            self.assertEqual(client.post("/api/config", json=config("study-a", "page-a", "db-a")).status_code, 200)
+            self.assertEqual(client.post("/api/config", json=config("study-a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "db-a")).status_code, 200)
             # Study B is a different study with its own unrelated, already
             # discovered target -- activating it is not an edit of Study A.
-            activated = client.post("/api/config", json=config("study-b", "page-b", "db-b"))
+            activated = client.post("/api/config", json=config("study-b", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "db-b"))
 
         self.assertEqual(activated.status_code, 200)
         saved = activated.get_json()["config"]["study_settings"]["plugins"]["notion"]["settings"]

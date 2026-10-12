@@ -665,8 +665,10 @@ function renderPluginDashboardDetail(item, status) {
 
 function renderPluginAdminActions(manifest, pluginStatus) {
   if (manifest?.capability_config?.admin_actions?.rendered_by_dashboard) return '';
-  // Actions with a connection role are drawn by the connection panel.
-  const actions = (manifest?.capability_config?.admin_actions?.actions || []).filter((action) => !action.role);
+  // Actions with a connection role are drawn by the connection panel; a
+  // plugin's own configurator runs its "configurator" actions itself.
+  const actions = (manifest?.capability_config?.admin_actions?.actions || [])
+    .filter((action) => !action.role && (action.surface || 'panel') === 'panel');
   if (!actions.length) return '';
   const buttons = actions.flatMap((action) => renderManifestActionInstances(action, manifest, pluginStatus));
   if (!buttons.length) return '';

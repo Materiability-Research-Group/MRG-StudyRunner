@@ -70,6 +70,10 @@ def build_update_status(app_config: dict[str, Any]) -> dict[str, Any]:
             "update": state.get("update"),
             "download": state.get("download"),
             "staged": _public_staged(state.get("staged")),
+            # What the restart helper logged during a failed install, so the
+            # operator sees the reason without looking for the file.
+            "log_tail": [str(line) for line in state.get("log_tail") or []][-40:],
+            "log_file": str(state.get("log_file") or ""),
             "install_supported": is_install_supported(app_config),
             "install_kind": (
                 "packaged" if getattr(sys, "frozen", False)
@@ -825,14 +829,23 @@ def _spawn_installer(state_file: Path, app_config: dict[str, Any]) -> None:
     else:
         cmd = [sys.executable, "-m", "study_runner.updates.installer", str(state_file)]
 
-    kwargs: dict[str, Any] = {"cwd": str(base_dir), "env": os.environ.copy(), "close_fds": True}
-    if os.name == "nt":
-        kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
-        )
-    else:
-        kwargs["start_new_session"] = True
-    subprocess.Popen(cmd, **kwargs)
+    # The helper outlives this server and its terminal window. Its own output
+    # (a crash before it can write the state, say) goes to the helper log,
+    # never to a terminal that is about to close.
+    log_file = state_file.parent / "update-helper.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with log_file.open("a", encoding="utf-8") as log_handle:
+        kwargs: dict[str, Any] = {
+            "cwd": str(base_dir), "env": os.environ.copy(), "close_fds": True,
+            "stdin": subprocess.DEVNULL, "stdout": log_handle, "stderr": subprocess.STDOUT,
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+                subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+            )
+        else:
+            kwargs["start_new_session"] = True
+        subprocess.Popen(cmd, **kwargs)
 
 
 def _public_asset(asset: dict[str, Any]) -> dict[str, Any]:

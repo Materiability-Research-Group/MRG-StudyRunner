@@ -59,6 +59,41 @@ class InstallerRestartTests(unittest.TestCase):
             self.assertEqual(json.loads(state_file.read_text(encoding="utf-8"))["state"], "applied")
 
 
+class InstallScriptFailureReasonTests(unittest.TestCase):
+    def test_the_macos_script_names_its_reason_after_a_fixed_prefix(self) -> None:
+        lines = ["Reusing uv 0.5.0.", "Study Runner setup failed: the uv download has the wrong checksum"]
+        self.assertEqual(installer._failure_reason(lines), "the uv download has the wrong checksum")
+
+    def test_a_powershell_error_is_read_from_the_line_before_its_location(self) -> None:
+        lines = [
+            "Downloading uv 0.5.0...",
+            "The uv download has the wrong checksum (expected a, found b).",
+            "At C:\\Study Runner\\tools\\install-windows.ps1:135 char:13",
+            "+             throw \"The uv download has the wrong checksum\"",
+            "    + CategoryInfo          : OperationStopped",
+        ]
+        self.assertEqual(installer._failure_reason(lines), "The uv download has the wrong checksum (expected a, found b).")
+
+    def test_otherwise_the_last_line_is_the_reason(self) -> None:
+        self.assertEqual(installer._failure_reason(["one", "two"]), "two")
+        self.assertEqual(installer._failure_reason([]), "")
+
+
+class InstallerVisibleStartTests(unittest.TestCase):
+    def test_an_unanswered_terminal_prompt_does_not_fail_a_finished_install(self) -> None:
+        # macOS asks before a program may control Terminal; a prompt nobody
+        # answers must leave "start it by hand", not a failed update.
+        with tempfile.TemporaryDirectory() as temp:
+            log_file = Path(temp) / "update-helper.log"
+            timeout = installer.subprocess.TimeoutExpired(cmd="osascript", timeout=60)
+            with patch.object(installer.os, "name", "posix"), \
+                    patch.object(installer.sys, "platform", "darwin"), \
+                    patch.object(installer.subprocess, "run", side_effect=timeout):
+                installer._start_visible(Path(temp), log_file)
+
+            self.assertIn("start Study Runner by hand", log_file.read_text(encoding="utf-8"))
+
+
 class InstallerArchiveUpdateTests(unittest.TestCase):
     def _prepare(self, temp: str):
         base = Path(temp)
@@ -121,6 +156,32 @@ class InstallerArchiveUpdateTests(unittest.TestCase):
             self.assertEqual(saved["state"], "install_failed")
             self.assertIn("undone", saved["error"])
             self.assertNotIn("staged", saved)
+
+    def test_a_failed_install_names_its_reason_and_keeps_this_attempts_log_lines(self) -> None:
+        def failing_install_script(command, **kwargs):
+            kwargs["stdout"].write("Installing Study Runner Python dependencies...\n")
+            kwargs["stdout"].write(
+                "Study Runner setup failed: could not install software/requirements.txt. "
+                "Check the internet connection and retry\n"
+            )
+            kwargs["stdout"].flush()
+            return installer.subprocess.CompletedProcess(command, 1)
+
+        with tempfile.TemporaryDirectory() as temp:
+            install_root, state_file = self._prepare(temp)
+            log_file = state_file.parent / "update-helper.log"
+            log_file.write_text("2026-01-01T00:00:00Z an earlier attempt that failed differently\n", encoding="utf-8")
+            with patch.object(installer, "_start_visible"), \
+                    patch.object(installer.subprocess, "run", side_effect=failing_install_script), \
+                    patch.object(installer.time, "sleep"):
+                exit_code = installer.main([str(state_file)])
+
+            self.assertEqual(exit_code, 1)
+            saved = json.loads(state_file.read_text(encoding="utf-8"))
+            self.assertIn("could not install software/requirements.txt", saved["error"])
+            self.assertTrue(any("setup failed" in line for line in saved["log_tail"]))
+            self.assertFalse(any("earlier attempt" in line for line in saved["log_tail"]))
+            self.assertEqual(Path(saved["log_file"]), log_file.resolve())
 
     def test_a_locked_file_during_the_swap_restarts_the_old_version(self) -> None:
         real_replace = archive_update.os.replace

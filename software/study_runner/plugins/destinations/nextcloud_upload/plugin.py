@@ -123,7 +123,10 @@ def _run_admin_action(
     password = str(payload.get("password") or "") or context.secret(
         "nextcloud", str(payload.get("study_id") or "").strip()
     )
-    timeout_seconds = int(payload.get("timeout_seconds") or 10)
+    # The study settings panel never asks for a timeout: it is a machine
+    # setting, so an omitted value means "the one this computer uses".
+    machine_timeout = (context.hardware_config.get("nextcloud") or {}).get("timeout_seconds") or 10
+    timeout_seconds = int(payload.get("timeout_seconds") or machine_timeout)
     return test_connection(share_link, password=password, timeout_seconds=timeout_seconds)
 
 

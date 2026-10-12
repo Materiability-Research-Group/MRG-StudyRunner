@@ -321,6 +321,32 @@ class ArchiveUpdateServiceTests(unittest.TestCase):
                 self.assertEqual(state["state"], "error")
                 self.assertIn("interrupted", state["error"])
 
+    def test_a_failed_install_shows_its_log_lines_in_the_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            app_config = {"STORAGE_ROOT": temp, "BASE_DIR": str(Path(temp) / "software")}
+            state_file = update_service.resolve_update_paths(app_config).state_file
+            update_service._write_state(state_file, {
+                "state": "install_failed",
+                "error": "The update could not be installed and was undone: install script exited with code 1",
+                "log_tail": ["Study Runner setup failed: could not download uv"],
+                "log_file": str(state_file.parent / "update-helper.log"),
+            })
+            status = update_service.build_update_status(app_config)
+            self.assertEqual(status["log_tail"], ["Study Runner setup failed: could not download uv"])
+            self.assertTrue(status["log_file"].endswith("update-helper.log"))
+
+    def test_the_helper_writes_its_own_output_to_the_helper_log(self) -> None:
+        # Never to the terminal of the server that is about to exit.
+        with tempfile.TemporaryDirectory() as temp:
+            state_file = Path(temp) / "updates" / "update-state.json"
+            with patch.object(update_service.subprocess, "Popen") as popen:
+                update_service._spawn_installer(state_file, {"BASE_DIR": temp})
+            kwargs = popen.call_args.kwargs
+            self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.STDOUT)
+            self.assertTrue(kwargs["stdout"].name.endswith("update-helper.log"))
+            self.assertTrue((state_file.parent / "update-helper.log").exists())
+
     def test_other_states_are_left_alone_at_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             app_config = {"STORAGE_ROOT": temp}

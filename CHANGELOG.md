@@ -5,6 +5,17 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Changed
+
+- Each upload destination in Study settings > Data destinations is now one calm block, the same for every destination plugin. A status line names the next missing step (the key, then a required setting) and that control is highlighted; it counts the same things the study start check does. Below it: the per-study key with a short "Save", the fields an operator actually types, and a "Target" row with the plugin's own "Configure…" and its "Test connection". Read-only values sit in a closed "Technical details" section instead of greyed-out inputs. Actions a plugin's configurator uses internally are no longer shown as raw forms (Notion offered seven, with cursor, page ID and mapping fields): a manifest marks them `"surface": "configurator"`, and the dashboard follows the same rule. A panel action no longer asks for a machine setting such as the timeout - Notion and Nextcloud use the one set for this computer.
+- Notion: the parent page accepts the whole link from "••• > Copy link"; the ID is read from it wherever Study Runner uses the page, and text that holds no page ID is refused with a hint when the study is saved. The database ID is shown under "Technical details" and set by the configurator. "Target" summarizes where results go, e.g. "„Study Runner Export“ · eine Zeile pro Sitzung · 3 Spalten" (Notion plugin 1.5.0, Nextcloud plugin 1.1.1).
+
+### Fixed
+
+- A failed in-app update now says why. The update panel showed only "install script exited with code 1; see …/update-helper.log", and that log lies in the data folder, which can be elsewhere than the program folder. The message now carries the install script's own reason, and the panel shows this attempt's log lines with a copy button and the log's path. The restart helper writes its own output to that log instead of to the closing terminal, and a macOS prompt about controlling Terminal no longer turns a finished install into a failed one.
+- Switching the admin language raised an error from the study settings panel, so an open panel was not re-translated.
+- On Windows, text crossing between Study Runner and a plugin's own process lost every character outside plain ASCII - umlauts, "•" - in both directions, because the plugin process wrote in the Windows code page while the server read UTF-8. Plugin processes now use UTF-8 on every system; macOS was not affected.
+
 ## 1.7.19 - 2026-10-12
 
 ### Fixed

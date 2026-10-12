@@ -691,7 +691,12 @@ class PluginUiContractTests(unittest.TestCase):
         self.assertNotIn("settingsHubAction('nextcloud'", machine_panel)
 
     def test_destination_credentials_and_actions_are_manifest_driven(self) -> None:
-        study_panel = _read(WEB / "scripts" / "settings" / "study" / "study-settings-panel.js")
+        study_folder = WEB / "scripts" / "settings" / "study"
+        # The panel, the destination block it renders, and the block's rules.
+        study_panel = "\n".join(
+            _read(study_folder / name)
+            for name in ("study-settings-panel.js", "destination-block.js", "destination-rules.js")
+        )
         machine_panel = _read(WEB / "scripts" / "settings" / "machine" / "machine-settings-panel.js")
         admin_html = _read(WEB / "pages" / "admin.html").lower()
 

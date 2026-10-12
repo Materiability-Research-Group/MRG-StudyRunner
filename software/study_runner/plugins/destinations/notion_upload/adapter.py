@@ -24,6 +24,8 @@ from typing import Any
 from study_runner.shared.dependency_utils import ensure_requirements
 from study_runner.contracts.participant_fields import PARTICIPANT_FIELD_ORDER
 
+from .notion_ids import notion_id_from_input
+
 
 # Clients are cached by a hash of their API key, not by study id: two studies
 # sharing one key share one client, renaming a study cannot orphan anything,
@@ -307,7 +309,7 @@ def test_connection(
         ("Database", database_id, lambda value: client.databases.retrieve(database_id=value)),
         ("Parent page", parent_page_id, lambda value: client.pages.retrieve(page_id=value)),
     ):
-        target = _strip_dashes(str(raw_id or "").strip())
+        target = _notion_id(str(raw_id or "").strip())
         if not target:
             continue
         try:
@@ -348,7 +350,7 @@ def list_children(*, api_key: str, page_id: str, cursor: str | None = None) -> d
     client = get_client(api_key)
     if client is None:
         return {"ok": False, "error": "Notion upload is not ready: no client could be started."}
-    target = _strip_dashes(str(page_id or "").strip())
+    target = _notion_id(str(page_id or "").strip())
     if not target:
         return {"ok": False, "error": "A page id is required."}
     try:
@@ -364,13 +366,13 @@ def list_children(*, api_key: str, page_id: str, cursor: str | None = None) -> d
         block_type = block.get("type")
         if block_type == "child_database":
             children.append({
-                "id": _strip_dashes(str(block.get("id") or "")),
+                "id": _notion_id(str(block.get("id") or "")),
                 "type": "database",
                 "title": str((block.get("child_database") or {}).get("title") or ""),
             })
         elif block_type == "child_page":
             children.append({
-                "id": _strip_dashes(str(block.get("id") or "")),
+                "id": _notion_id(str(block.get("id") or "")),
                 "type": "page",
                 "title": str((block.get("child_page") or {}).get("title") or ""),
             })
@@ -388,7 +390,7 @@ def describe_database(*, api_key: str, database_id: str) -> dict[str, Any]:
     client = get_client(api_key)
     if client is None:
         return {"ok": False, "error": "Notion upload is not ready: no client could be started."}
-    target = _strip_dashes(str(database_id or "").strip())
+    target = _notion_id(str(database_id or "").strip())
     if not target:
         return {"ok": False, "error": "A database id is required."}
     try:
@@ -451,7 +453,7 @@ def create_notion_database(
     client = get_client(api_key)
     if client is None:
         return {"ok": False, "error": "Notion upload is not ready: no client could be started."}
-    parent = _strip_dashes(str(parent_page_id or "").strip())
+    parent = _notion_id(str(parent_page_id or "").strip())
     if not parent:
         return {"ok": False, "error": "A parent page id is required."}
 
@@ -475,7 +477,7 @@ def create_notion_database(
     except Exception as error:
         _permanent, message = classify_notion_error(error)
         return {"ok": False, "error": message}
-    return {"ok": True, "database_id": _strip_dashes(str(database["id"])), "key_column": key_column}
+    return {"ok": True, "database_id": _notion_id(str(database["id"])), "key_column": key_column}
 
 
 def _resolve_session_folder(data_dir: Any, session_path: str) -> Path:
@@ -612,7 +614,7 @@ def _upsert_mapped_row(
     key_value: str,
     notion_properties: dict[str, Any],
 ) -> str:
-    db_id = _strip_dashes(database_id)
+    db_id = _notion_id(database_id)
     if hasattr(client, "data_sources"):
         source_id = _data_source_of(client, db_id)
         rows = client.data_sources.query(
@@ -762,11 +764,11 @@ def _ensure_database(
 ) -> str:
     db_id = study_settings.get("notion_database_id", "")
     if db_id:
-        normalized_db_id = _strip_dashes(db_id)
+        normalized_db_id = _notion_id(db_id)
         _ensure_participant_metadata_properties(client, normalized_db_id, study_settings, config_data, updates)
         return normalized_db_id
 
-    parent_page_id = _strip_dashes(study_settings.get("notion_parent_page_id", ""))
+    parent_page_id = _notion_id(study_settings.get("notion_parent_page_id", ""))
     if not parent_page_id:
         raise RuntimeError("Notion parent_page_id is required in study_settings to auto-create a Notion database.")
 
@@ -800,7 +802,7 @@ def _ensure_database(
 
     db = client.databases.create(**db_args)
 
-    new_id = _strip_dashes(db["id"])
+    new_id = _notion_id(db["id"])
     study_settings["notion_database_id"] = new_id
     updates["database_id"] = new_id
 
@@ -990,7 +992,7 @@ def _find_child_database(client: Any, parent_page_id: str, title: str) -> str:
             if block.get("type") != "child_database":
                 continue
             if str((block.get("child_database") or {}).get("title") or "").strip() == title:
-                return _strip_dashes(str(block.get("id") or ""))
+                return _notion_id(str(block.get("id") or ""))
         cursor = response.get("next_cursor") if response.get("has_more") else None
         if not cursor:
             return ""
@@ -1008,7 +1010,7 @@ def _data_source_of(client: Any, db_id: str) -> str:
 
 
 def _sessions_parent_page(client: Any, participants_db_id: str, study_settings: dict[str, Any]) -> str:
-    parent = _strip_dashes(study_settings.get("notion_parent_page_id", ""))
+    parent = _notion_id(study_settings.get("notion_parent_page_id", ""))
     if parent:
         return parent
     # Only a database id was configured: put the sessions next to it.
@@ -1018,7 +1020,7 @@ def _sessions_parent_page(client: Any, participants_db_id: str, study_settings: 
         raise RuntimeError(
             "Notion parent_page_id is required in study_settings to create the sessions database."
         )
-    return _strip_dashes(str(parent))
+    return _notion_id(str(parent))
 
 
 def _database_parent_page(client: Any, db_id: str) -> str | None:
@@ -1028,7 +1030,7 @@ def _database_parent_page(client: Any, db_id: str) -> str | None:
     except Exception as error:
         print(f"[NOTION] Could not verify sessions database parent: {error}")
         return None
-    return _strip_dashes(str((database.get("parent") or {}).get("page_id") or ""))
+    return _notion_id(str((database.get("parent") or {}).get("page_id") or ""))
 
 
 def _ensure_sessions_database(
@@ -1038,7 +1040,7 @@ def _ensure_sessions_database(
     updates: dict[str, str],
 ) -> str:
     """One row per session, related to its participant row."""
-    db_id = _strip_dashes(study_settings.get("notion_sessions_database_id", ""))
+    db_id = _notion_id(study_settings.get("notion_sessions_database_id", ""))
     parent_page_id = _sessions_parent_page(client, participants_db_id, study_settings)
     if db_id:
         # A cached sessions database only stays valid under its original
@@ -1088,7 +1090,7 @@ def _ensure_sessions_database(
             # links every session. Never lose the upload over it.
             print(f"[NOTION] Sessions database without relation ({error}).")
             database = _create_database(client, db_args, schema)
-        db_id = _strip_dashes(str(database["id"]))
+        db_id = _notion_id(str(database["id"]))
         print(f"[NOTION] Auto-created sessions database: {db_id}")
     study_settings["notion_sessions_database_id"] = db_id
     updates["sessions_database_id"] = db_id
@@ -1497,8 +1499,9 @@ def _seconds_between(start: Any, end: Any) -> float | None:
         return None
 
 
-def _strip_dashes(value: str) -> str:
-    return value.replace("-", "").strip()
+def _notion_id(value: str) -> str:
+    """A Notion ID from an ID, a dashed ID or a pasted page link."""
+    return notion_id_from_input(value) or str(value or "").replace("-", "").strip()
 
 
 def _session_date_iso(result_payload: dict[str, Any]) -> str:

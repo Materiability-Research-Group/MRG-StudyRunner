@@ -1,7 +1,7 @@
 {
   "api_version": 5,
   "plugin_key": "nextcloud",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "category": "storage",
   "config_key": "nextcloud",
   "runtime": {

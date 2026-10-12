@@ -14,6 +14,9 @@ from study_runner.updates import archive_update
 
 SERVER_EXIT_TIMEOUT_SECONDS = 60
 INSTALL_SCRIPT_TIMEOUT_SECONDS = 1800
+LOG_TAIL_LINES = 40
+# tools/install-macos.sh prints its reason after this prefix.
+SETUP_FAILED_PREFIX = "Study Runner setup failed:"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
 
     state_file = Path(args[0]).expanduser().resolve()
     log_file = state_file.parent / "update-helper.log"
+    # Everything this attempt logs starts here; the update panel shows it.
+    log_start = _log_size(log_file)
 
     try:
         state = _read_json(state_file)
@@ -43,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         # ("version X available") describes the version now running.
         state.pop("staged", None)
         state.pop("update", None)
+        state.pop("log_tail", None)
+        state.pop("log_file", None)
         _write_json(state_file, state)
         return 0
     except Exception as error:
@@ -52,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(state, dict):
                 state["state"] = "install_failed"
                 state["error"] = str(error)
+                state["log_file"] = str(log_file)
+                state["log_tail"] = _log_lines_since(log_file, log_start)[-LOG_TAIL_LINES:]
                 # The staged files were used up or rolled back; a new attempt
                 # starts with "Check for updates", never with a stale restart.
                 state.pop("staged", None)
@@ -148,13 +157,45 @@ def _run_install_script(install_root: Path, log_file: Path) -> None:
                    str(install_root / "tools" / "install-windows.cmd")]
     else:
         command = ["/bin/bash", str(install_root / "tools" / "install-macos.sh")]
+    start = _log_size(log_file)
     with log_file.open("a", encoding="utf-8") as output:
         result = subprocess.run(
             command, cwd=str(install_root), stdout=output, stderr=subprocess.STDOUT,
             timeout=INSTALL_SCRIPT_TIMEOUT_SECONDS, env=_clean_env(),
         )
     if result.returncode != 0:
-        raise RuntimeError(f"install script exited with code {result.returncode}; see {log_file}")
+        reason = _failure_reason(_log_lines_since(log_file, start))
+        detail = f": {reason}" if reason else ""
+        raise RuntimeError(f"install script exited with code {result.returncode}{detail} (see {log_file})")
+
+
+def _failure_reason(lines: list[str]) -> str:
+    """The install script's own explanation, from this run's output only."""
+    for line in reversed(lines):
+        if SETUP_FAILED_PREFIX in line:
+            return line.split(SETUP_FAILED_PREFIX, 1)[1].strip()
+    # A PowerShell `throw` prints the message, then "At ...\install-windows.ps1:NN".
+    for index in range(len(lines) - 1, 0, -1):
+        if lines[index].lstrip().startswith("At ") and ".ps1:" in lines[index]:
+            return lines[index - 1].strip()
+    return lines[-1].strip() if lines else ""
+
+
+def _log_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _log_lines_since(path: Path, offset: int) -> list[str]:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            data = handle.read()
+    except OSError:
+        return []
+    return [line.rstrip() for line in data.decode("utf-8", errors="replace").splitlines() if line.strip()]
 
 
 def _wait_for_server_exit(restart: dict[str, Any], log_file: Path) -> None:
@@ -192,10 +233,17 @@ def _start_visible(install_root: Path, log_file: Path) -> None:
         )
         script = f"{exports}cd {shlex.quote(str(install_root))} && bash tools/start-macos.sh"
         apple_script = 'tell application "Terminal" to do script ' + json.dumps(script)
-        result = subprocess.run(
-            ["osascript", "-e", apple_script, "-e", 'tell application "Terminal" to activate'],
-            env=env, capture_output=True, text=True, timeout=60,
-        )
+        # macOS may first ask whether this program may control Terminal. An
+        # unanswered prompt or a refusal must not turn a finished install into
+        # a failed one: the new version is in place, only the window is missing.
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", apple_script, "-e", 'tell application "Terminal" to activate'],
+                env=env, capture_output=True, text=True, timeout=60,
+            )
+        except (subprocess.TimeoutExpired, OSError) as error:
+            _append_log(log_file, f"Could not open Terminal ({error}); start Study Runner by hand.")
+            return
         if result.returncode != 0:
             _append_log(log_file, f"Could not open Terminal ({result.stderr.strip()}); start Study Runner by hand.")
             return
