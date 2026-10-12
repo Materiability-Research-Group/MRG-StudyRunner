@@ -136,16 +136,29 @@ def _run_admin_action(
         )
     if action_key == "describe_output_catalog":
         return adapter.describe_output_catalog(config_data_json=str(payload.get("config_data_json") or "{}"))
+    if action_key == "check_mapping":
+        return adapter.check_mapping(
+            mapping_json=str(payload.get("mapping_json") or "{}"),
+            config_data_json=str(payload.get("config_data_json") or "{}"),
+        )
+    if action_key == "prepare_schema":
+        return adapter.prepare_mapped_schema(
+            api_key=api_key,
+            mapping_json=str(payload.get("mapping_json") or "{}"),
+            apply=payload.get("apply") is True,
+        )
     if action_key == "describe_session_sources":
         return adapter.describe_session_sources(
             data_dir=context.data_dir,
             session_path=str(payload.get("session_path") or ""),
+            study_id=study_id,
         )
     if action_key == "preview_mapping":
         return adapter.preview_mapping(
             data_dir=context.data_dir,
             mapping_json=str(payload.get("mapping_json") or "{}"),
             session_path=str(payload.get("session_path") or ""),
+            study_id=study_id,
         )
     raise ValueError(f"Unknown Notion admin action: {action_key}")
 

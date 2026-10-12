@@ -128,6 +128,7 @@ The one place that knows how clocks relate; see `docs/recording-finalization-wor
 | `software/study_runner/runtime_core/delivery/withdrawal_service.py` | Consent withdrawal: stops writers, cancels pending uploads, deletes the session tree and the journal copies outside it, then leaves a `WITHDRAWN.json` tombstone; its ledger lives outside the folder it empties so an interrupted run can resume | dangerous |
 | `software/study_runner/runtime_core/delivery/upload_jobs_service.py` | Persistent upload journal, crash replay, backoff worker, and retry state | no |
 | `software/study_runner/runtime_core/delivery/upload_runtime.py` | Registers manifest-declared destination plugin handlers with persistent upload jobs | no |
+| `software/study_runner/runtime_core/delivery/notion_backfill_service.py` | Reviews historical card identities and enqueues eligible Notion uploads through the persistent job service | careful |
 | `software/study_runner/runtime_core/settings/folder_open_service.py` | Validates and opens result folders on Windows or macOS | no |
 | `software/study_runner/runtime_core/settings/data_folder.py` | Where studies, results, settings and the certificate live: `<install>/data-folder.json` > program folder (`STUDY_RUNNER_DATA_DIR` by hand wins); folder marker, check before linking, missing drive stops the start, remembered folders for relinking, native folder dialog | careful |
 | `software/study_runner/runtime_core/settings/runtime_config.py` | Paths, ports, app mode, data-folder resolution | careful |
@@ -301,8 +302,11 @@ recording code now, not plugins: `data_core/host/markers.py` and
 | `osc_touchdesigner/driver.py` | API-v5 process entry point (`run_plugin_driver("osc")`) | no |
 | `notion_upload/adapter.py` + `plugin.py` | Uploads result summaries to Notion (with offline queue) | careful |
 | `notion_upload/mapping.py` | The export mapping's evaluator: output catalog, reducers, column values for one session - no Notion client | careful |
+| `notion_upload/linked_targets.py` | Prepares Notion relation properties, writes page links and participant summaries, and creates filtered views | careful |
 | `notion_upload/notion_ids.py` | Reads a Notion page or database ID from a pasted link or ID - standard library only | careful |
 | `notion_upload/ui/configurator.js` | The study-settings configurator modal: page tree, target list, column mapping | careful |
+| `notion_upload/ui/configurator-target-links.js` | Target relation list and graph plus participant aggregate controls | careful |
+| `notion_upload/ui/configurator-transfer.js` | Versioned JSON transfer of the parent page and mapping without credentials | careful |
 | `notion_upload/ui/configurator-node-view.js` | Compiles one target's columns to a node graph and back | careful |
 | `notion_upload/ui/node-canvas.js` | Generic pan/zoom/wire node canvas, no dependency on Notion | careful |
 | `notion_upload/driver.py` | API-v5 process entry point (`run_plugin_driver("notion")`) | no |

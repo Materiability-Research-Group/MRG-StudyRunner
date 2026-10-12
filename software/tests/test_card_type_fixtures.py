@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import unittest
+from uuid import NAMESPACE_URL, uuid5
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -62,7 +63,8 @@ class GoldenFixtureTests(unittest.TestCase):
             with self.subTest(card_type=card_type):
                 config = _build_config(card_type, fixture["question"])
                 actual = config["questions"][0]
-                expected = fixture["expected_question"]
+                expected = {**fixture["expected_question"],
+                            "card_id": str(uuid5(NAMESPACE_URL, "study-runner:Fixture Study:0"))}
                 if card_type == "stimulus":
                     # See card_type_fixtures.py's module docstring: this
                     # block depends on which plugins happen to be

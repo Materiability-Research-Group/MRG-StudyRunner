@@ -417,6 +417,19 @@ class NotionPreviewMappingTests(unittest.TestCase):
         self.assertEqual(target["rows"][0]["key"], "session-1")
         self.assertEqual(target["rows"][0]["properties"]["Participant"], "p01")
 
+    def test_rejects_a_finished_session_from_another_study(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            self._write_session(data_dir)
+            path = "study-a/p01/20260101T100000Z__session-1"
+            preview = adapter.preview_mapping(
+                data_dir=data_dir, mapping_json=json.dumps({"preset": "as_before", "targets": []}),
+                session_path=path, study_id="study-b",
+            )
+            sources = adapter.describe_session_sources(data_dir=data_dir, session_path=path, study_id="study-b")
+        self.assertFalse(preview["ok"])
+        self.assertFalse(sources["ok"])
+
     def test_rejects_a_path_outside_the_three_segment_session_layout(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             result = adapter.preview_mapping(

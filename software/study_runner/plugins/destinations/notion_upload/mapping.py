@@ -25,6 +25,9 @@ rule item/list plays in a node editor, applied to column mapping instead.
 from __future__ import annotations
 
 import re
+import hashlib
+import json
+from uuid import NAMESPACE_URL, uuid5
 from typing import Any
 
 from study_runner.contracts.participant_fields import PARTICIPANT_FIELD_ORDER
@@ -33,6 +36,8 @@ ROW_LEVELS = ("session", "participant", "card")
 REDUCERS = ("mean", "min", "max", "count", "join", "first", "last")
 COLUMN_TYPES = ("rich_text", "number", "date", "select", "multi_select")
 PRESETS = ("as_before", "simple", "analysis", "custom")
+RELATION_LEVELS = {("card", "participant"), ("card", "session"), ("session", "participant")}
+AGGREGATE_FUNCTIONS = ("count", "mean", "min", "max", "last")
 
 # The row level fixes what the key column holds; it is never one of the
 # mapped columns. Its *name* defaults to these English ones, and a target may
@@ -52,7 +57,7 @@ def key_column_for(target: dict[str, Any]) -> str:
 DEFAULT_EXPORT_MAPPING: dict[str, Any] = {"preset": "as_before", "targets": []}
 
 _CARD_SOURCE = re.compile(
-    r"^card(?:\[(?P<index>\d+)\])?\.(?P<field>prompt|answer|duration_seconds|skipped)$"
+    r"^card(?:\[(?P<index>\d+)\])?\.(?P<field>id|index|revision|prompt|answer|duration_seconds|skipped)$"
 )
 _CARD_STREAM_SOURCE = re.compile(
     r"^card(?:\[(?P<index>\d+)\])?\.stream\.(?P<stream>[^.]+)\.channel\.(?P<channel>[^.]+)\.(?P<stat>mean|min|max|stddev|mode|coverage|max_gap_seconds)$"
@@ -89,6 +94,7 @@ def validate_export_mapping(value: Any, *, config_data: dict[str, Any] | None = 
         raise MappingError("export_mapping.targets must be a list.")
     participant_fields = set(_participant_fields(config_data)) if config_data else None
     seen_ids: set[str] = set()
+    targets_by_id: dict[str, dict[str, Any]] = {}
     for index, target in enumerate(targets):
         path = f"export_mapping.targets[{index}]"
         if not isinstance(target, dict):
@@ -99,6 +105,7 @@ def validate_export_mapping(value: Any, *, config_data: dict[str, Any] | None = 
         if target_id in seen_ids:
             raise MappingError(f"export_mapping.targets contains duplicate id {target_id!r}.")
         seen_ids.add(target_id)
+        targets_by_id[target_id] = target
         if not str(target.get("title") or "").strip():
             raise MappingError(f"{path}.title is required.")
         row_level = target.get("row_level")
@@ -119,18 +126,78 @@ def validate_export_mapping(value: Any, *, config_data: dict[str, Any] | None = 
             if not isinstance(column_name, str) or not column_name.strip():
                 raise MappingError(f"{path}.columns has an empty column name.")
             _validate_column(f"{path}.columns.{column_name}", column, row_level, participant_fields)
+        if "comparison_views" in target and not isinstance(target["comparison_views"], bool):
+            raise MappingError(f"{path}.comparison_views must be boolean.")
+        if target.get("comparison_views") and row_level != "card":
+            raise MappingError(f"{path}.comparison_views requires a card target.")
         relations = target.get("relations", [])
-        if relations and not isinstance(relations, list):
+        if not isinstance(relations, list):
             raise MappingError(f"{path}.relations must be a list.")
         for relation_index, relation in enumerate(relations or []):
             if not isinstance(relation, dict) or not str(relation.get("target_id") or "").strip():
                 raise MappingError(f"{path}.relations[{relation_index}].target_id is required.")
+            if set(relation) - {"target_id", "property_name", "reverse_property_name", "linked_view"}:
+                raise MappingError(f"{path}.relations[{relation_index}] has unsupported fields.")
+            for field in ("property_name", "reverse_property_name"):
+                if field in relation and (not isinstance(relation[field], str) or not relation[field].strip()):
+                    raise MappingError(f"{path}.relations[{relation_index}].{field} must be a name.")
+            if "linked_view" in relation and not isinstance(relation["linked_view"], bool):
+                raise MappingError(f"{path}.relations[{relation_index}].linked_view must be boolean.")
+        aggregates = target.get("aggregates", [])
+        if not isinstance(aggregates, list):
+            raise MappingError(f"{path}.aggregates must be a list.")
+        if aggregates and row_level != "participant":
+            raise MappingError(f"{path}.aggregates requires a participant target.")
+        names = set(columns) | {key_column_for(target)}
+        for aggregate_index, aggregate in enumerate(aggregates):
+            agg_path = f"{path}.aggregates[{aggregate_index}]"
+            if not isinstance(aggregate, dict) or set(aggregate) - {"name", "target_id", "column", "function"}:
+                raise MappingError(f"{agg_path} has an invalid shape.")
+            name = str(aggregate.get("name") or "").strip()
+            if not name or name in names:
+                raise MappingError(f"{agg_path}.name must be unique on this target.")
+            names.add(name)
+            if aggregate.get("function") not in AGGREGATE_FUNCTIONS:
+                raise MappingError(f"{agg_path}.function must be one of: {', '.join(AGGREGATE_FUNCTIONS)}.")
+            if not str(aggregate.get("target_id") or "").strip() or not str(aggregate.get("column") or "").strip():
+                raise MappingError(f"{agg_path} needs a target_id and column.")
     for target in targets:
+        relation_targets: set[str] = set()
+        property_names = set(target["columns"]) | {key_column_for(target)}
+        property_names.update(aggregate["name"] for aggregate in target.get("aggregates") or [])
+        system_names = {"StudyRunner Session Start"} if target["row_level"] == "session" and target.get("relations") else set()
+        if target["row_level"] == "card" and (target.get("relations") or target.get("comparison_views")):
+            system_names.update({"StudyRunner Card ID", "StudyRunner Card Revision", "StudyRunner Session Start"})
+        if property_names & system_names:
+            raise MappingError(f"Target {target['id']!r} maps a reserved Notion property.")
+        property_names.update(system_names)
         for relation in (target.get("relations") or []) if isinstance(target, dict) else []:
             if isinstance(relation, dict) and relation.get("target_id") not in seen_ids:
                 raise MappingError(
                     f"export_mapping.targets[{target.get('id')}] relates to an unknown target."
                 )
+            other = targets_by_id[relation["target_id"]]
+            if (target["row_level"], other["row_level"]) not in RELATION_LEVELS:
+                raise MappingError(f"Target {target['id']!r} cannot relate to {other['id']!r} at these row levels.")
+            if relation["target_id"] in relation_targets:
+                raise MappingError(f"Target {target['id']!r} has a duplicate relation to {other['id']!r}.")
+            relation_targets.add(relation["target_id"])
+            property_name = str(relation.get("property_name") or other["title"]).strip()
+            if property_name in property_names:
+                raise MappingError(f"Target {target['id']!r} repeats Notion property {property_name!r}.")
+            property_names.add(property_name)
+            if relation.get("linked_view") and (target["row_level"], other["row_level"]) != ("card", "participant"):
+                raise MappingError("A linked participant view requires a card-to-participant relation.")
+        for aggregate in target.get("aggregates") or []:
+            other = targets_by_id.get(aggregate["target_id"])
+            if other is None or other["row_level"] not in {"session", "card"}:
+                raise MappingError(f"Aggregate {aggregate['name']!r} needs a session or card target.")
+            if not any(rel.get("target_id") == target["id"] for rel in other.get("relations") or []):
+                raise MappingError(f"Aggregate {aggregate['name']!r} needs a relation from {other['id']!r}.")
+            if aggregate["column"] not in other["columns"]:
+                raise MappingError(f"Aggregate {aggregate['name']!r} uses an unknown source column.")
+            if aggregate["function"] in {"mean", "min", "max"} and other["columns"][aggregate["column"]]["type"] != "number":
+                raise MappingError(f"Aggregate {aggregate['name']!r} needs a number column.")
 
 
 def _validate_column(
@@ -279,9 +346,49 @@ def build_output_catalog(config_data: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         catalog.append({"source": f"participant.{field}", "label": f"Participant: {field}", "value_type": "string"})
     catalog.append({"source": "card.prompt", "label": "Card: prompt", "value_type": "string", "per_card": True})
+    catalog.append({"source": "card.id", "label": "Card: stable ID", "value_type": "string", "per_card": True})
+    catalog.append({"source": "card.index", "label": "Card: position", "value_type": "number", "per_card": True})
+    catalog.append({"source": "card.revision", "label": "Card: revision", "value_type": "string", "per_card": True})
     catalog.append({"source": "card.answer", "label": "Card: answer", "value_type": "string", "per_card": True})
     catalog.append({"source": "card.duration_seconds", "label": "Card: duration (s)", "value_type": "number", "per_card": True})
     catalog.append({"source": "card.skipped", "label": "Card: skipped", "value_type": "string", "per_card": True})
+    for index, question in enumerate(config_data.get("questions") or []):
+        if not isinstance(question, dict):
+            continue
+        label = str(question.get("prompt") or question.get("title") or question.get("type") or f"Card {index + 1}")[:60]
+        for field, value_type in (("id", "string"), ("prompt", "string"), ("answer", "string"),
+                                  ("duration_seconds", "number"), ("skipped", "string")):
+            catalog.append({"source": f"card[{index}].{field}", "label": f"Card {index + 1}: {label} / {field}",
+                            "value_type": value_type})
+    settings = config_data.get("study_settings") or {}
+    selected = settings.get("plugins") or {}
+    if settings.get("sensors_enabled") is not False:
+        for manifest in config_data.get("plugin_manifests") or []:
+            if not isinstance(manifest, dict):
+                continue
+            plugin_key = str(manifest.get("plugin_key") or "")
+            selection = selected.get(plugin_key) or {}
+            if not selection.get("enabled") or "interval_summary" not in (manifest.get("capabilities") or []):
+                continue
+            for stream in manifest.get("streams") or []:
+                if not isinstance(stream, dict):
+                    continue
+                source_id = str(stream.get("source_id") or "")
+                if not source_id:
+                    continue
+                stream_key = f"{plugin_key}_{source_id.rsplit('.', 1)[-1]}"
+                numeric = str(stream.get("channel_format") or "").lower() not in {"string", "str"}
+                stats = ("mean", "min", "max", "stddev", "coverage", "max_gap_seconds") if numeric else ("mode",)
+                for channel in stream.get("channels") or []:
+                    if not isinstance(channel, str):
+                        continue
+                    for stat in stats:
+                        catalog.append({
+                            "source": f"card.stream.{stream_key}.channel.{channel}.{stat}",
+                            "label": f"{plugin_key} / {stream.get('key') or stream_key} / {channel} / {stat}",
+                            "value_type": "string" if stat == "mode" else "number",
+                            "per_card": True,
+                        })
     return catalog
 
 
@@ -301,10 +408,27 @@ def session_context(
         if isinstance(summary_card, dict) and isinstance(summary_card.get("question_index"), int):
             cards_by_index[summary_card["question_index"]] = summary_card
     cards: list[dict[str, Any]] = []
+    questions = (config_data or {}).get("questions") or []
+    questions_by_id = {str(item.get("card_id")): item for item in questions
+                       if isinstance(item, dict) and item.get("card_id")}
     for detail in details:
         index = detail.get("question_index")
+        question = questions_by_id.get(str(detail.get("card_id") or ""))
+        if question is None:
+            candidate = questions[index] if isinstance(index, int) and 0 <= index < len(questions) else {}
+            expected_prompt = str(candidate.get("prompt") or candidate.get("title") or candidate.get("subtitle") or "")
+            question = candidate if expected_prompt == str(detail.get("question_prompt") or "") else {}
+        study_id = str(result_payload.get("study_id") or "")
+        card_id = str(detail.get("card_id") or question.get("card_id") or uuid5(NAMESPACE_URL, f"study-runner:{study_id}:{index}"))
+        revision_source = question if question else {"type": detail.get("question_type"), "prompt": detail.get("question_prompt")}
+        revision = str(detail.get("card_revision") or hashlib.sha256(
+            json.dumps(revision_source, sort_keys=True, ensure_ascii=False, default=str).encode("utf-8")
+        ).hexdigest()[:12])
         raw_streams = (cards_by_index.get(index) or {}).get("streams") or {}
         cards.append({
+            "id": card_id,
+            "index": index,
+            "revision": revision,
             "prompt": str(detail.get("question_prompt") or ""),
             "answer": detail.get("answer"),
             "duration_seconds": detail.get("interval_seconds", detail.get("seconds_since_previous_answer")),
@@ -389,9 +513,9 @@ def _resolve(source: str, context: dict[str, Any], *, current_card: int | None) 
 def _resolve_card_field(context: dict[str, Any], match: re.Match, current_card: int | None, read) -> Any:
     index_text = match.group("index")
     if index_text is not None:
-        cards = context["cards"]
         index = int(index_text)
-        return read(cards[index]) if 0 <= index < len(cards) else None
+        card = next((item for item in context["cards"] if item.get("index") == index), None)
+        return read(card) if card is not None else None
     if current_card is not None:
         return read(context["cards"][current_card])
     return [read(card) for card in context["cards"]]

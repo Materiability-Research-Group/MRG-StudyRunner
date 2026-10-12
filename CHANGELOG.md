@@ -5,6 +5,11 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Added
+
+- Notion targets can link shared participant, session, and card databases. Participant pages show filtered card views; card databases show comparisons by stable card ID, with revision markers and optional participant aggregates. Existing legacy mappings keep their previous upload behavior until explicitly migrated (Notion plugin 1.6.0).
+- The Notion configurator can export and import versioned JSON mappings, check configured study sources without a completed session, and backfill saved sessions through resumable upload jobs. Presets add a target without replacing existing targets, and the workspace modal keeps a viewport-sized layout with unsaved-change guards.
+
 ## 1.7.20 - 2026-10-12
 
 ### Changed

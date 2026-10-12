@@ -47,6 +47,7 @@ EXPECTED_ROUTES = {
     ("GET", "/api/uploads/<job_id>/retry-target"),
     ("POST", "/api/uploads/acknowledge"),
     ("POST", "/api/uploads/retry"),
+    ("POST", "/api/admin/notion/backfill"),
     ("POST", "/api/admin/system/open-results-folder"),
     ("POST", "/api/admin/plugins/<plugin_key>/<action>"),
     ("DELETE", "/api/admin/plugins/<plugin_key>/config"),

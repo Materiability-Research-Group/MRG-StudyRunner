@@ -7,7 +7,7 @@
  */
 import { escapeHtml } from './dom-utils.js';
 
-export function createModal({ title = '', variant = '', closeLabel = 'Close', onClose = null } = {}) {
+export function createModal({ title = '', variant = '', closeLabel = 'Close', beforeClose = null, onClose = null } = {}) {
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   backdrop.hidden = true;
@@ -35,6 +35,7 @@ export function createModal({ title = '', variant = '', closeLabel = 'Close', on
 
   function close() {
     if (!isOpen()) return;
+    if (beforeClose?.() === false) return;
     backdrop.hidden = true;
     if (escapeHandler) {
       document.removeEventListener('keydown', escapeHandler);
@@ -65,6 +66,7 @@ export function createModal({ title = '', variant = '', closeLabel = 'Close', on
 
   function destroy() {
     close();
+    if (isOpen()) return;
     backdrop.remove();
   }
 

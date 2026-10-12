@@ -14,6 +14,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
+from uuid import NAMESPACE_URL, UUID, uuid5
 from typing import Any
 
 from ..studies.study_plugin_config import (
@@ -71,12 +72,16 @@ def validate_and_normalize_config(config_data: Any) -> dict[str, Any]:
     if not isinstance(questions, list):
         raise ValidationError("Questions must be a list.")
 
+    normalized_questions = [
+        _validate_question(question_data, question_index, study_id)
+        for question_index, question_data in enumerate(questions)
+    ]
+    card_ids = [question["card_id"] for question in normalized_questions]
+    if len(card_ids) != len(set(card_ids)):
+        raise ValidationError("Every card must have a unique card_id.")
     return {
         "study_id": study_id,
-        "questions": [
-            _validate_question(question_data, question_index)
-            for question_index, question_data in enumerate(questions, start=1)
-        ],
+        "questions": normalized_questions,
         "study_settings": _validate_study_settings(config_data.get("study_settings")),
     }
 
@@ -840,8 +845,18 @@ def _validate_answer_value(*, answer_key: str, question: dict[str, Any], answer:
 # ============================================================
 #  4. QUESTIONS & SETTINGS - config validation
 # ============================================================
-def _validate_question(question_data: Any, question_index: int) -> dict[str, Any]:
-    normalized = _validate_question_by_type(question_data, question_index)
+def _validate_question(question_data: Any, question_index: int, study_id: str = "") -> dict[str, Any]:
+    normalized = _validate_question_by_type(question_data, question_index + 1)
+    raw_card_id = question_data.get("card_id")
+    if raw_card_id is None or raw_card_id == "":
+        # Legacy studies get deterministic IDs. Once saved, the ID follows
+        # the card when the researcher moves it in the editor.
+        normalized["card_id"] = str(uuid5(NAMESPACE_URL, f"study-runner:{study_id}:{question_index}"))
+    else:
+        try:
+            normalized["card_id"] = str(UUID(str(raw_card_id)))
+        except (ValueError, AttributeError, TypeError) as error:
+            raise ValidationError(f"Question {question_index + 1} card_id must be a UUID.") from error
     if normalized.get("type") not in NON_ANSWER_QUESTION_TYPES:
         normalized["required"] = normalize_boolean(question_data.get("required", True))
 

@@ -36,6 +36,10 @@ export function createAdminStudyEditor(context) {
     getLanguage,
   } = context;
 
+  function newCard(type) {
+    return { ...defaultFor(type), card_id: crypto.randomUUID() };
+  }
+
   function handleListClick(event) {
     if (state.suppressListClick) {
       return;
@@ -360,7 +364,7 @@ export function createAdminStudyEditor(context) {
     const finishCardIndex = questions.findIndex(q => q.type === 'finish');
     const insertIndex = finishCardIndex !== -1 ? finishCardIndex : questions.length;
   
-    questions.splice(insertIndex, 0, defaultFor(type));
+    questions.splice(insertIndex, 0, newCard(type));
     rebuildAll();
     selectQuestion(insertIndex);
     requestAnimationFrame(() => $(`pc-${insertIndex}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
@@ -447,9 +451,9 @@ export function createAdminStudyEditor(context) {
   function ensureBookends(questions) {
     if (!Array.isArray(questions)) return;
     const pidIndex = questions.findIndex(q => q.type === 'participant-id');
-    const pidCard = pidIndex !== -1 ? questions.splice(pidIndex, 1)[0] : defaultFor('participant-id');
+    const pidCard = pidIndex !== -1 ? questions.splice(pidIndex, 1)[0] : newCard('participant-id');
     const finIndex = questions.findIndex(q => q.type === 'finish');
-    const finCard = finIndex !== -1 ? questions.splice(finIndex, 1)[0] : defaultFor('finish');
+    const finCard = finIndex !== -1 ? questions.splice(finIndex, 1)[0] : newCard('finish');
     questions.unshift(pidCard);
     questions.push(finCard);
   }

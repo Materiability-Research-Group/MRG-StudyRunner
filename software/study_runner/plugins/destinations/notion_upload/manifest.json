@@ -1,7 +1,7 @@
 {
   "api_version": 5,
   "plugin_key": "notion",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "category": "storage",
   "config_key": "notion",
   "runtime": {
@@ -41,7 +41,9 @@
     },
     "assets": [
       "ui/configurator-node-view.js",
-      "ui/node-canvas.js"
+      "ui/node-canvas.js",
+      "ui/configurator-target-links.js",
+      "ui/configurator-transfer.js"
     ]
   },
   "capabilities": {
@@ -170,6 +172,27 @@
           "payload_schema": {
             "study_id": { "type": "string", "required": false, "max_length": 256 },
             "session_path": { "type": "string", "required": true, "max_length": 512 }
+          }
+        },
+        {
+          "key": "check_mapping",
+          "surface": "configurator",
+          "label": "Check mapping without a session",
+          "payload_schema": {
+            "study_id": { "type": "string", "required": false, "max_length": 256 },
+            "mapping_json": { "type": "string", "required": true, "max_length": 200000 },
+            "config_data_json": { "type": "string", "required": true, "max_length": 200000 }
+          }
+        },
+        {
+          "key": "prepare_schema",
+          "surface": "configurator",
+          "label": "Prepare mapped Notion columns",
+          "payload_schema": {
+            "api_key": { "type": "string", "required": false, "max_length": 256 },
+            "study_id": { "type": "string", "required": false, "max_length": 256 },
+            "mapping_json": { "type": "string", "required": true, "max_length": 200000 },
+            "apply": { "type": "boolean", "required": true }
           }
         },
         {

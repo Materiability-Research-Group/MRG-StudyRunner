@@ -1,4 +1,5 @@
 import datetime as dt
+import hashlib
 import json
 import os
 import shutil
@@ -370,6 +371,10 @@ def build_answer_details(
         )
         entry = {
             "question_index": question_index,
+            "card_id": question.get("card_id"),
+            "card_revision": hashlib.sha256(json.dumps(
+                question, sort_keys=True, ensure_ascii=False, default=str,
+            ).encode("utf-8")).hexdigest()[:12],
             "question_number": question_index + 1,
             "question_key": answer_key or ("stimulus" if is_stimulus else "participant_id"),
             "question_type": question_type,

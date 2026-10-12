@@ -17,7 +17,7 @@ deepface>=0.0.92; sys_platform != "darwin" or platform_machine != "x86_64"
 tf-keras>=2.16; sys_platform != "darwin" or platform_machine != "x86_64"
 cryptography>=42
 requests>=2.31
-notion-client>=2.2.1
+notion-client>=3.0.0
 # BrainBit SDKs. The native libraries live inside these wheels and are bundled
 # into packaged builds (release_tools/pyinstaller/study_runner_server_common.py),
 # so keep a lower bound here rather than leaving the version open.

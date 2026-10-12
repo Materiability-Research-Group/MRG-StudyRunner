@@ -15,9 +15,12 @@
  */
 import { createModal } from '/static/scripts/shared/modal.js';
 import { escapeHtml } from '/static/scripts/shared/dom-utils.js';
-import { getJson } from '/static/scripts/shared/api-client.js';
-import { getLanguage } from '/static/scripts/shared/i18n.js';
+import { getJson, postJson } from '/static/scripts/shared/api-client.js';
+import { getLanguage, t } from '/static/scripts/shared/i18n.js';
+import { getPluginCatalog } from '/static/scripts/shared/plugin-catalog.js';
 import { mountNodeView } from './configurator-node-view.js';
+import { renderTargetLinks, bindTargetLinks, mountTargetGraph } from './configurator-target-links.js';
+import { appendPresetTarget, exportConfiguration, importConfiguration, downloadConfiguration } from './configurator-transfer.js';
 
 // Column names a preset creates, per language. Every name stays editable
 // afterwards; this only decides what a fresh database starts with.
@@ -56,8 +59,6 @@ const OTHER_SOURCE = '__other__';
 const PRESETS = [
   { key: 'simple', title: 'Simple', description: 'One database, one row per session.' },
   { key: 'analysis', title: 'Analysis', description: 'One database, one row per card - good for filtering in Notion.' },
-  { key: 'as_before', title: 'As before', description: 'Participants + sessions databases, exactly like today.' },
-  { key: 'custom', title: 'Custom', description: 'Start from an empty target list.' },
 ];
 
 const SUMMARY_TEXT = {
@@ -106,6 +107,7 @@ export function summarize(settings = {}) {
 
 export function openConfigurator({ plugin, studyId, settings, configData, runAction, saveSettings, showToast }) {
   const state = {
+    studyId,
     mapping: normalizeMapping(settings?.export_mapping),
     parentPageId: String(settings?.parent_page_id || '').trim(),
     activeTargetId: null,
@@ -113,24 +115,38 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     preview: null,
     dirty: false,
     nameLanguage: defaultNameLanguage(),
-    catalog: [], // session/participant fields - study-wide, loaded once
-    sessions: [], // recent finished sessions, for the preview/source picker
+    catalog: [], // declared sources from this study and its enabled plugins
+    sessions: [], // finished sessions from this study for value previews
     sessionSources: {}, // session_path -> sensor sources actually present there
     previewSessionPath: '',
+    structure: null,
+    schemaChanges: null,
+    importDraft: null,
+    backfill: null,
+    legacyDatabaseIds: [settings?.database_id, settings?.sessions_database_id].filter(Boolean),
+    relationMode: 'list',
     viewModeByTarget: {}, // target id -> 'list' | 'node'
     manualSourceColumns: new Set(), // "target.id:column name" currently typed by hand
   };
   state.activeTargetId = state.mapping.targets[0]?.id || null;
 
   let activeNodeView = null;
+  let activeTargetGraph = null;
 
   const modal = createModal({
-    title: `${plugin?.ui?.label || 'Notion'} export mapping`,
+    title: `${plugin?.ui?.label || 'Notion'} ${t('notionConfigurator.title', 'export mapping')}`,
     variant: 'workspace',
-    closeLabel: 'Close',
+    closeLabel: t('notionConfigurator.close', 'Close'),
+    beforeClose: () => !state.dirty || window.confirm(t('notionConfigurator.discardConfirm', 'Discard every unsaved change?')),
     // Each open builds a fresh modal; remove it on close instead of leaving
     // hidden copies behind in the page.
-    onClose: () => { activeNodeView?.destroy(); modal.element.remove(); },
+    onClose: () => { activeNodeView?.destroy(); activeTargetGraph?.destroy(); modal.element.remove(); },
+  });
+  modal.body.addEventListener('input', (event) => {
+    if (event.target.matches('input:not([type=file]), textarea')) {
+      state.dirty = true;
+      updateDirtyIndicator();
+    }
   });
 
   function render() {
@@ -139,7 +155,9 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     // so they are torn down explicitly before every rebuild, not only on
     // close - render() runs on nearly every edit while mounted.
     activeNodeView?.destroy();
+    activeTargetGraph?.destroy();
     activeNodeView = null;
+    activeTargetGraph = null;
     modal.body.innerHTML = `
       <div class="configurator-rail">${renderRail(state)}</div>
       <div class="configurator-main">${renderMain(state)}</div>
@@ -147,10 +165,17 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     bind();
     const target = activeTarget();
     if (target && state.viewModeByTarget[target.id] === 'node') mountNode(target);
+    if (state.relationMode === 'node') {
+      const container = modal.body.querySelector('[data-target-graph]');
+      if (container) activeTargetGraph = mountTargetGraph(container, state.mapping, () => {
+        state.dirty = true;
+        updateDirtyIndicator();
+        queueMicrotask(render);
+      });
+    }
   }
 
-  /** The sources a column may pick from: study-wide fields, plus whatever
-   * the chosen preview session actually has (real stream/channel names). */
+  /** Declared study sources plus values observed in the selected run. */
   function combinedCatalog() {
     return [...state.catalog, ...(state.sessionSources[state.previewSessionPath] || [])];
   }
@@ -302,11 +327,33 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
       void selectPreviewSession(event.target.value);
     });
     main?.querySelector('[data-preview-run]')?.addEventListener('click', () => void runPreview());
+    main?.querySelector('[data-check-mapping]')?.addEventListener('click', () => void checkMapping());
+    main?.querySelector('[data-prepare-schema]')?.addEventListener('click', () => void prepareSchema());
+    main?.querySelector('[data-backfill-preview]')?.addEventListener('click', () => void backfill(false));
+    main?.querySelector('[data-backfill-confirm]')?.addEventListener('click', () => void backfill(true));
+    main?.querySelector('[data-relation-mode]')?.addEventListener('change', (event) => {
+      state.relationMode = event.target.value;
+      render();
+    });
+    rail?.querySelector('[data-parent-page-id]')?.addEventListener('change', (event) => {
+      state.parentPageId = event.target.value.trim();
+      markDirty();
+    });
+    if (activeTarget()) bindTargetLinks(main, state.mapping, activeTarget(), markDirty);
+    rail?.querySelector('[data-export-config]')?.addEventListener('click', () => {
+      downloadConfiguration(exportConfiguration(studyId, state.parentPageId, serializeMapping(state.mapping)),
+        `notion-${studyId || 'study'}-mapping.json`);
+    });
+    rail?.querySelector('[data-import-config]')?.addEventListener('click', () => rail.querySelector('[data-import-file]')?.click());
+    rail?.querySelector('[data-import-file]')?.addEventListener('change', (event) => void readImport(event.target.files?.[0]));
+    rail?.querySelector('[data-import-keep]')?.addEventListener('click', () => void applyImport(true));
+    rail?.querySelector('[data-import-remove]')?.addEventListener('click', () => void applyImport(false));
     main?.querySelector('[data-save]')?.addEventListener('click', () => void save());
     main?.querySelector('[data-discard]')?.addEventListener('click', () => {
       // Sits right next to "Save mapping"; a misclick between the two must
       // not silently throw away unsaved work.
-      if (state.dirty && !window.confirm('Discard every unsaved change?')) return;
+      if (state.dirty && !window.confirm(t('notionConfigurator.discardConfirm', 'Discard every unsaved change?'))) return;
+      state.dirty = false;
       modal.close();
     });
   }
@@ -320,12 +367,27 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     render();
   }
 
+  function currentConfig() {
+    const settings = configData?.study_settings || {};
+    return {
+      study_id: studyId,
+      questions: (configData?.questions || []).map(({ type, prompt, title, subtitle, fields, card_id }) =>
+        ({ type, prompt, title, subtitle, fields, card_id })),
+      study_settings: {
+        sensors_enabled: settings.sensors_enabled,
+        plugins: Object.fromEntries(Object.entries(settings.plugins || {}).map(([key, value]) =>
+          [key, { enabled: value?.enabled === true }])),
+      },
+      plugin_manifests: getPluginCatalog().plugins.map(({ plugin_key, capabilities, streams }) =>
+        ({ plugin_key, capabilities, streams })),
+    };
+  }
+
   async function loadCatalogAndSessions() {
     try {
-      // Only the questions are needed (to find the participant-id card's
-      // stored fields) - sending the whole study, stimulus content and all,
-      // risks the admin action's own payload size limit on a large study.
-      const minimalConfig = { questions: configData?.questions || [] };
+      // Keep stimulus content out of the admin payload while including the
+      // enabled plugin manifest data needed to list sensor channels.
+      const minimalConfig = currentConfig();
       const response = await runAction('describe_output_catalog', { config_data_json: JSON.stringify(minimalConfig) });
       state.catalog = response?.result?.sources || [];
     } catch (error) {
@@ -334,11 +396,7 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     try {
       const sessions = await getJson('/api/admin/sessions');
       const all = (Array.isArray(sessions) ? sessions : []).filter((session) => session.session_path);
-      // Prefer this study's own sessions; with none yet (e.g. a brand-new
-      // study), fall back to every session rather than an empty picker -
-      // still useful to try a mapping's shape against real sensor data.
-      const ownSessions = studyId ? all.filter((session) => session.study_id === studyId) : all;
-      state.sessions = (ownSessions.length ? ownSessions : all).slice(0, 100);
+      state.sessions = all.filter((session) => session.study_id === studyId).slice(0, 100);
     } catch (error) {
       console.error('[notion-configurator] Could not load the session list:', error);
     }
@@ -346,6 +404,10 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
   }
 
   async function selectPreviewSession(sessionPath) {
+    if (sessionPath && !state.sessions.some((session) => session.session_path === sessionPath)) {
+      showToast?.(t('notionConfigurator.wrongStudy', 'This session does not belong to the current study.'), 'error');
+      return;
+    }
     state.previewSessionPath = sessionPath;
     if (sessionPath && !state.sessionSources[sessionPath]) {
       try {
@@ -360,26 +422,15 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
   }
 
   function applyPreset(presetKey) {
-    // Clicking the already-active preset is almost always an accidental
-    // double click, not "reset my edits back to the preset defaults" - do
-    // nothing rather than discard whatever the operator built on top of it.
-    if (presetKey === state.mapping.preset) return;
-    // Confirm whenever there is something real to lose - a connected
-    // database, mapped columns - regardless of whether an edit happened in
-    // *this* opening of the configurator. A first-click-after-open on a
-    // preset button must not be able to silently wipe an already-saved,
-    // working mapping just because `dirty` has not been set yet.
-    if (state.mapping.targets.length && !window.confirm(
-      'This replaces every current target - including any connected database - with the preset\'s defaults. Continue?',
-    )) return;
-    state.mapping = presetMapping(presetKey, state.nameLanguage);
-    state.activeTargetId = state.mapping.targets[0]?.id || null;
+    const fresh = presetMapping(presetKey, state.nameLanguage).targets[0];
+    if (!fresh) return;
+    state.activeTargetId = appendPresetTarget(state.mapping, fresh);
     markDirty();
   }
 
   function addTarget() {
     const target = {
-      id: `target-${Date.now().toString(36)}`,
+      id: `target-${crypto.randomUUID()}`,
       title: (PRESET_NAMES[state.nameLanguage] || PRESET_NAMES.en).newTarget,
       row_level: 'session',
       key_column: keyColumnDefault('session', state.nameLanguage),
@@ -400,6 +451,10 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     // connection and every mapped column - at once.
     if (!window.confirm(`Remove target "${target.title || '(untitled)'}"? This cannot be undone here.`)) return;
     state.mapping.targets = state.mapping.targets.filter((item) => item.id !== targetId);
+    for (const item of state.mapping.targets) {
+      item.relations = (item.relations || []).filter((relation) => relation.target_id !== targetId);
+      item.aggregates = (item.aggregates || []).filter((aggregate) => aggregate.target_id !== targetId);
+    }
     if (state.activeTargetId === targetId) state.activeTargetId = state.mapping.targets[0]?.id || null;
     markDirty();
   }
@@ -415,9 +470,18 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
         const columns = response?.result?.columns || [];
         target.columns = autoMapColumns(columns, target);
         render();
+        void autoPrepareWhenReady();
       });
     }
     markDirty();
+    void autoPrepareWhenReady();
+  }
+
+  async function autoPrepareWhenReady() {
+    if (state.mapping.targets.length && state.mapping.targets.every((item) =>
+      item.database_id && Object.keys(item.columns || {}).length)) {
+      await prepareSchema();
+    }
   }
 
   async function expandNode(pageId) {
@@ -453,6 +517,7 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
       target.database_id = result.database_id;
       showToast?.('Database created.', 'success');
       markDirty();
+      void autoPrepareWhenReady();
     } catch (error) {
       showToast?.(error.message || String(error), 'error');
     }
@@ -529,9 +594,98 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
     render();
   }
 
+  async function checkMapping() {
+    try {
+      const response = await runAction('check_mapping', {
+        mapping_json: JSON.stringify(serializeMapping(state.mapping)),
+        config_data_json: JSON.stringify(currentConfig()),
+      });
+      state.structure = response?.result || response;
+    } catch (error) {
+      state.structure = { ok: false, error: error.message || String(error) };
+    }
+    render();
+    return state.structure?.ok;
+  }
+
+  async function prepareSchema() {
+    if (!await checkMapping()) return;
+    try {
+      const payload = { mapping_json: JSON.stringify(serializeMapping(state.mapping)) };
+      const response = await runAction('prepare_schema', { ...payload, apply: false });
+      const result = response?.result || response;
+      if (!result.ok) { showToast?.(result.error, 'error'); return; }
+      state.schemaChanges = result.changes || [];
+      render();
+      if (!state.schemaChanges.length) return;
+      const summary = state.schemaChanges.map((change) => `${change.target}: ${change.property} (${change.type})`).join('\n');
+      if (!window.confirm(`Add these Notion properties?\n\n${summary}`)) return;
+      const applied = await runAction('prepare_schema', { ...payload, apply: true });
+      const finalResult = applied?.result || applied;
+      if (!finalResult.ok) throw new Error(finalResult.error);
+      state.schemaChanges = [];
+      showToast?.('Notion properties prepared.', 'success');
+      render();
+    } catch (error) {
+      showToast?.(error.message || String(error), 'error');
+    }
+  }
+
+  async function readImport(file) {
+    if (!file) return;
+    try {
+      state.importDraft = JSON.parse(await file.text());
+      importConfiguration(state.importDraft, studyId);
+      render();
+    } catch (error) {
+      state.importDraft = null;
+      const code = error instanceof SyntaxError ? 'invalidFile' : error.code;
+      showToast?.(t(`notionConfigurator.importError.${code}`, error.message || String(error)), 'error');
+    }
+  }
+
+  async function backfill(confirm) {
+    if (state.dirty) { showToast?.(t('notionConfigurator.saveBeforeBackfill', 'Save the mapping before backfill.'), 'error'); return; }
+    if (confirm && !window.confirm(`Queue ${state.backfill?.sessions?.length || 0} saved sessions for Notion backfill?`)) return;
+    try {
+      const response = await postJson('/api/admin/notion/backfill', { study_id: studyId, confirm });
+      if (!response.ok) throw new Error(response.error || 'Backfill failed.');
+      state.backfill = response;
+      if (confirm) showToast?.(`${response.jobs?.length || 0} upload jobs queued.`, 'success');
+      render();
+    } catch (error) {
+      showToast?.(error.message || String(error), 'error');
+    }
+  }
+
+  async function applyImport(keepIds) {
+    try {
+      const imported = importConfiguration(state.importDraft, studyId, { keepIds });
+      const response = await runAction('check_mapping', {
+        mapping_json: JSON.stringify(imported.mapping),
+        config_data_json: JSON.stringify(currentConfig()),
+      });
+      const result = response?.result || response;
+      if (!result.ok) throw new Error(result.error);
+      const targets = imported.mapping.targets.map((item) => `${item.title} (${item.row_level})`).join('\n');
+      if (!window.confirm(`Import these targets and parent page?\n\n${targets || '(legacy mode)'}\n\nParent page: ${imported.parentPageId || '(reconnect)'}`)) return;
+      state.mapping = normalizeMapping(imported.mapping);
+      state.parentPageId = imported.parentPageId;
+      state.activeTargetId = state.mapping.targets[0]?.id || null;
+      state.importDraft = null;
+      markDirty();
+    } catch (error) {
+      showToast?.(t(`notionConfigurator.importError.${error.code}`, error.message || String(error)), 'error');
+    }
+  }
+
   async function save() {
     try {
-      await saveSettings({ export_mapping: serializeMapping(state.mapping) });
+      if (!await checkMapping()) { showToast?.(state.structure?.error || 'Invalid mapping.', 'error'); return; }
+      if (state.legacyDatabaseIds.length && state.mapping.targets.length && !settings?.export_mapping?.targets?.length) {
+        if (!window.confirm(`Switch this study from legacy uploads to configurable targets? Legacy databases will stop receiving new rows:\n${state.legacyDatabaseIds.join('\n')}`)) return;
+      }
+      await saveSettings({ parent_page_id: state.parentPageId, export_mapping: serializeMapping(state.mapping) });
       state.dirty = false;
       showToast?.('Export mapping saved.', 'success');
       modal.close();
@@ -548,7 +702,7 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
 function renderRail(state) {
   return `
     <div class="configurator-section">
-      <h3>Preset</h3>
+      <h3>${t('notionConfigurator.presets', 'Presets')}</h3>
       <label class="field">
         <span>Column names / Spaltennamen</span>
         <select data-name-language>
@@ -558,13 +712,13 @@ function renderRail(state) {
       </label>
       <div class="configurator-presets">
         ${PRESETS.map((preset) => `
-          <button class="btn-secondary${state.mapping.preset === preset.key ? ' is-active' : ''}" type="button" data-preset="${escapeHtml(preset.key)}" title="${escapeHtml(preset.description)}">
+          <button class="btn-secondary" type="button" data-preset="${escapeHtml(preset.key)}" title="${escapeHtml(preset.description)}">
             ${escapeHtml(preset.title)}
           </button>`).join('')}
       </div>
     </div>
     <div class="configurator-section">
-      <h3>Targets</h3>
+      <h3>${t('notionConfigurator.targets', 'Targets')}</h3>
       <ul class="configurator-target-list">
         ${state.mapping.targets.map((target) => `
           <li class="configurator-target-row${target.id === state.activeTargetId ? ' is-active' : ''}" data-select-target="${escapeHtml(target.id)}">
@@ -575,11 +729,21 @@ function renderRail(state) {
             <button class="icon-button" type="button" data-remove-target="${escapeHtml(target.id)}" title="Remove target"><i class="iconoir-trash"></i></button>
           </li>`).join('') || '<li class="settings-hint">No targets yet.</li>'}
       </ul>
-      <button class="btn-secondary" type="button" data-add-target><i class="iconoir-plus"></i> Add target</button>
+      <button class="btn-secondary" type="button" data-add-target><i class="iconoir-plus"></i> ${t('notionConfigurator.addTarget', 'Add target')}</button>
     </div>
     <div class="configurator-section">
-      <h3>Notion page</h3>
+      <h3>${t('notionConfigurator.notionPage', 'Notion page')}</h3>
+      <label class="field"><span>${t('notionConfigurator.parentPage', 'Parent page ID')}</span><input data-parent-page-id value="${escapeHtml(state.parentPageId)}"></label>
       ${renderTree(state)}
+    </div>
+    <div class="configurator-section">
+      <h3>${t('notionConfigurator.transfer', 'Transfer')}</h3>
+      <button class="btn-secondary" type="button" data-export-config>${t('notionConfigurator.export', 'Export JSON')}</button>
+      <button class="btn-secondary" type="button" data-import-config>${t('notionConfigurator.import', 'Import JSON')}</button>
+      <input type="file" accept="application/json,.json" data-import-file hidden>
+      ${state.importDraft ? `<p class="settings-hint">From study ${escapeHtml(state.importDraft.study_id)}: ${state.importDraft.export_mapping.targets.length} targets.</p>
+        ${state.importDraft.study_id === state.studyId ? `<button class="btn-secondary" type="button" data-import-keep>${t('notionConfigurator.keepIds', 'Keep Notion IDs')}</button>` : ''}
+        <button class="btn-secondary" type="button" data-import-remove>${t('notionConfigurator.removeIds', 'Remove Notion IDs and reconnect')}</button>` : ''}
     </div>
   `;
 }
@@ -610,7 +774,8 @@ function renderTree(state) {
 function renderMain(state) {
   const target = state.mapping.targets.find((item) => item.id === state.activeTargetId);
   if (!target) {
-    return '<p class="settings-hint">Add a target on the left to start mapping columns.</p>';
+    return `<p class="settings-hint">${t('notionConfigurator.addTargetHint', 'Add a target on the left to start mapping columns. Existing legacy studies continue to use their original databases.')}</p>
+      <div class="dashboard-actions"><button class="btn-primary" type="button" data-save>${t('notionConfigurator.save', 'Save mapping')}</button></div>`;
   }
   const viewMode = state.viewModeByTarget[target.id] === 'node' ? 'node' : 'list';
   return `
@@ -635,10 +800,31 @@ function renderMain(state) {
       </label>
     </div>
     ${viewMode === 'node' ? renderNodeView(target) : renderColumnList(state, target)}
+    <div class="configurator-section">
+      <h3>${t('notionConfigurator.connections', 'Target connections')}</h3>
+      <label class="field"><span>View</span><select data-relation-mode>
+        <option value="list" ${state.relationMode === 'list' ? 'selected' : ''}>List</option>
+        <option value="node" ${state.relationMode === 'node' ? 'selected' : ''}>Node graph</option>
+      </select></label>
+      ${state.relationMode === 'node' ? '<div class="configurator-node-container" data-target-graph></div>' : ''}
+      ${renderTargetLinks(state.mapping, target)}
+    </div>
     ${renderPreviewSection(state, target)}
+    <div class="configurator-section">
+      <h3>${t('notionConfigurator.setup', 'Notion setup')}</h3>
+      <button class="btn-secondary" type="button" data-prepare-schema>${t('notionConfigurator.reviewProperties', 'Review required properties')}</button>
+      ${state.schemaChanges ? `<p class="settings-hint">${state.schemaChanges.length} properties to add.</p>` : ''}
+    </div>
+    <div class="configurator-section">
+      <h3>${t('notionConfigurator.historicalUpload', 'Historical upload')}</h3>
+      <button class="btn-secondary" type="button" data-backfill-preview>${t('notionConfigurator.reviewSessions', 'Review saved sessions')}</button>
+      ${state.backfill ? `<p class="settings-hint">${state.backfill.sessions?.length || 0} eligible sessions; ${state.backfill.unresolved_cards?.length || 0} unresolved cards.</p>
+        ${(state.backfill.unresolved_cards || []).map((card) => `<p class="settings-hint">${escapeHtml(card.session_path)} / card ${escapeHtml(card.question_index)}: ${escapeHtml(card.prompt)}</p>`).join('')}
+        ${state.backfill.sessions?.length ? `<button class="btn-secondary" type="button" data-backfill-confirm>${t('notionConfigurator.queueBackfill', 'Queue backfill')}</button>` : ''}` : ''}
+    </div>
     <div class="dashboard-actions">
-      <button class="btn-secondary" type="button" data-discard>Discard</button>
-      <button class="btn-primary" type="button" data-save>Save mapping</button>
+      <button class="btn-secondary" type="button" data-discard>${t('notionConfigurator.discard', 'Discard')}</button>
+      <button class="btn-primary" type="button" data-save>${t('notionConfigurator.save', 'Save mapping')}</button>
     </div>
   `;
 }
@@ -705,7 +891,7 @@ function renderColumnRow(name, column, rowLevel, state, targetId) {
 function renderPreviewSection(state) {
   return `
     <div class="configurator-section">
-      <h3>Preview</h3>
+      <h3>${t('notionConfigurator.preview', 'Preview')}</h3>
       <div class="configurator-preview-controls">
         <select data-preview-session-picker>
           <option value="">Pick a finished session…</option>
@@ -714,8 +900,13 @@ function renderPreviewSection(state) {
               ${escapeHtml(session.study_id || '')} / ${escapeHtml(session.participant_id || '')} / ${escapeHtml(formatSavedAt(session.saved_at))}
             </option>`).join('')}
         </select>
-        <button class="btn-secondary" type="button" data-preview-run>Preview with this session</button>
+        <button class="btn-secondary" type="button" data-preview-run>${t('notionConfigurator.previewSession', 'Preview with this session')}</button>
+        <button class="btn-secondary" type="button" data-check-mapping>${t('notionConfigurator.checkSources', 'Check sources and types')}</button>
       </div>
+      ${state.structure ? `<p class="settings-hint">${state.structure.ok
+        ? `Mapping valid. ${state.structure.sources || 0} study sources; unavailable: ${(state.structure.unavailable_sources || []).map(escapeHtml).join(', ') || 'none'}; type mismatches: ${(state.structure.type_mismatches || []).map(escapeHtml).join(', ') || 'none'}.`
+        : escapeHtml(state.structure.error || 'Invalid mapping.')}</p>` : ''}
+      ${!state.sessions.length ? `<p class="settings-hint">${t('notionConfigurator.emptyStudy', 'No finished session for this study. Source and type checks still work.')}</p>` : ''}
       ${renderPreview(state.preview)}
     </div>
   `;
@@ -802,6 +993,8 @@ function normalizeMapping(raw) {
       database_id: String(target?.database_id || ''),
       columns: target?.columns && typeof target.columns === 'object' ? { ...target.columns } : {},
       relations: Array.isArray(target?.relations) ? target.relations : [],
+      aggregates: Array.isArray(target?.aggregates) ? target.aggregates : [],
+      comparison_views: target?.comparison_views === true,
     })),
   };
 }
@@ -817,6 +1010,8 @@ function serializeMapping(mapping) {
       database_id: target.database_id,
       columns: target.columns,
       relations: target.relations || [],
+      aggregates: target.aggregates || [],
+      comparison_views: target.comparison_views === true,
     })),
   };
 }

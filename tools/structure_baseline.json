@@ -1,5 +1,5 @@
 {
-  "cross_package_import_edges": 544,
+  "cross_package_import_edges": 548,
   "cycle_count": 0,
   "cycle_pairs": [],
   "largest_file": {
@@ -76,7 +76,7 @@
       "path": "software/study_runner/plugins/cards/affect_map/plugin.py"
     },
     "plugins.destinations": {
-      "lines": 1550,
+      "lines": 1634,
       "path": "software/study_runner/plugins/destinations/notion_upload/adapter.py"
     },
     "plugins.outputs": {
@@ -102,13 +102,13 @@
   },
   "lines_per_package": {
     "apps": 0,
-    "apps.server": 5483,
+    "apps.server": 5500,
     "apps.ui": 0,
-    "apps.ui.admin": 6319,
+    "apps.ui.admin": 6323,
     "apps.ui.cards": 4904,
     "apps.ui.participant": 3445,
     "apps.ui.settings": 2291,
-    "apps.ui.shared": 3172,
+    "apps.ui.shared": 3174,
     "clock_core": 654,
     "contracts": 3092,
     "data_core": 16,
@@ -118,10 +118,10 @@
     "plugin_framework": 4224,
     "plugins": 0,
     "plugins.cards": 1465,
-    "plugins.destinations": 4188,
+    "plugins.destinations": 5068,
     "plugins.outputs": 142,
     "plugins.sensors": 11598,
-    "runtime_core": 16365,
+    "runtime_core": 16496,
     "shared": 466,
     "updates": 744
   }

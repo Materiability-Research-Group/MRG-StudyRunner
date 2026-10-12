@@ -1808,17 +1808,19 @@ body.admin::before { display: none; }
   max-height: min(860px, 94vh);
 }
 
-/* A plugin's own configurator (Notion's page tree + column mapping, for
-   example): the largest modal in the app, a two-pane workspace rather than
-   a form. Width/height follow this codebase's own large-modal convention
-   (.settings-modal--console), scaled up for two panes side by side. */
+/* A plugin workspace keeps a visible modal margin and lets each pane scroll. */
 .settings-modal--workspace {
-  width: min(1520px, calc(100vw - var(--s-6) * 2));
-  max-height: min(940px, 94vh);
+  width: calc(100vw - var(--s-6) * 2);
+  height: calc(100vh - var(--s-6) * 2);
+  height: calc(100dvh - var(--s-6) * 2);
+  max-height: none;
+  box-sizing: border-box;
 }
+.settings-modal--workspace .settings-modal-header { flex: 0 0 auto; }
 .settings-modal--workspace .settings-modal-body {
   padding: 0;
   display: grid;
+  flex: 1;
   grid-template-columns: clamp(220px, 22vw, 280px) minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
@@ -1836,6 +1838,14 @@ body.admin::before { display: none; }
   flex-direction: column;
   gap: var(--s-4);
 }
+.configurator-link-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s-2);
+  margin-block: var(--s-2);
+}
+.configurator-link-row .field { min-width: 150px; flex: 1; }
 @media (max-width: 860px) {
   .settings-modal--workspace .settings-modal-body {
     grid-template-columns: 1fr;

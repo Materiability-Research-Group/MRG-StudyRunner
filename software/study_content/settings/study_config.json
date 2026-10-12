@@ -68,6 +68,7 @@
         }
       },
       "code_label": "Your anonymous participant code",
+      "card_id": "091f4ad6-9872-505d-9fab-61e36a8179c1",
       "info_top": "The identifying name fields are used to generate the code and are not stored.",
       "info_bottom": "Ask the study operator if you are unsure which details to enter."
     },
@@ -77,7 +78,8 @@
       "text": "This short study demonstrates common self-report cards without using sensors.",
       "image_asset": "",
       "image_alt": "",
-      "layout": "text"
+      "layout": "text",
+      "card_id": "75ee5fa9-c0ce-5a75-9252-7b8e75353ab2"
     },
     {
       "type": "mood-meter",
@@ -85,6 +87,7 @@
       "variant": "classic",
       "allow_multiple": true,
       "word_lists": null,
+      "card_id": "682acfe5-a8f9-5ba3-92e7-cfc2724144eb",
       "required": true
     },
     {
@@ -95,6 +98,7 @@
         "Lively room",
         "Outdoors"
       ],
+      "card_id": "a38175a9-5ccc-5a86-8418-d839391baada",
       "required": true
     },
     {
@@ -102,6 +106,7 @@
       "prompt": "How alert do you feel right now?",
       "label_min": "Not alert",
       "label_max": "Very alert",
+      "card_id": "df342226-3086-5812-ae66-c891a2cd4a64",
       "required": true
     },
     {
@@ -117,17 +122,20 @@
           "Familiar"
         ]
       ],
+      "card_id": "2f6284bb-f0bb-54ee-b9b4-81b992cb3c17",
       "required": true
     },
     {
       "type": "text",
       "prompt": "Is there anything else you would like to add?",
+      "card_id": "57ea9e72-3058-5409-9cae-1f4d4748a9f0",
       "required": false
     },
     {
       "type": "finish",
       "title": "Thank you",
-      "prompt": "Your answers have been saved. You can now return the tablet to the study operator."
+      "prompt": "Your answers have been saved. You can now return the tablet to the study operator.",
+      "card_id": "afafa94d-2d7b-5360-bb01-73be6e6abb11"
     }
   ],
   "study_settings": {

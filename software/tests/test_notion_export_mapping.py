@@ -28,6 +28,7 @@ from study_runner.plugins.destinations.notion_upload.mapping import (
     stable_stream_key,
     validate_export_mapping,
 )
+from study_runner.plugins.destinations.notion_upload.adapter import check_mapping
 
 
 RESULT_PAYLOAD = {
@@ -57,6 +58,45 @@ def session_target(**columns: dict) -> dict:
 
 
 class ExportMappingValidationTests(unittest.TestCase):
+    def test_empty_study_checks_mapping_without_a_session(self) -> None:
+        import json
+
+        result = check_mapping(
+            mapping_json=json.dumps({"preset": "as_before", "targets": []}),
+            config_data_json=json.dumps({"questions": [], "study_settings": {}, "plugin_manifests": []}),
+        )
+        self.assertTrue(result["ok"])
+        self.assertGreater(result["sources"], 0)
+
+    def test_catalog_uses_only_enabled_study_sensor_manifests(self) -> None:
+        manifests = [{"plugin_key": key, "capabilities": ["interval_summary"], "streams": [{
+            "key": "eeg", "source_id": f"study_runner.{key}.eeg", "channel_format": "float32", "channels": ["alpha"],
+        }]} for key in ("active", "other")]
+        catalog = build_output_catalog({
+            "questions": [], "plugin_manifests": manifests,
+            "study_settings": {"plugins": {"active": {"enabled": True}, "other": {"enabled": False}}},
+        })
+        sensor_sources = [item["source"] for item in catalog if item["source"].startswith("card.stream.")]
+        self.assertTrue(sensor_sources)
+        self.assertTrue(all("active_eeg" in source for source in sensor_sources))
+        self.assertIn("card[0].answer", {item["source"] for item in build_output_catalog({
+            "questions": [{"type": "text", "prompt": "A"}], "study_settings": {},
+        })})
+
+    def test_card_identity_and_revision_survive_reordering(self) -> None:
+        original = {"questions": [
+            {"type": "text", "prompt": "First", "card_id": "card-first"},
+            {"type": "text", "prompt": "Second", "card_id": "card-second"},
+        ]}
+        reordered = {"questions": list(reversed(original["questions"]))}
+        result = {**RESULT_PAYLOAD, "answer_details": [{
+            "question_index": 0, "question_type": "text", "question_prompt": "First",
+            "card_id": "card-first", "answer": "yes",
+        }]}
+        before = session_context(result, {}, original)["cards"][0]
+        after = session_context(result, {}, reordered)["cards"][0]
+        self.assertEqual((before["id"], before["revision"]), (after["id"], after["revision"]))
+
     def test_default_mapping_is_the_as_before_preset_and_always_valid(self) -> None:
         self.assertEqual(DEFAULT_EXPORT_MAPPING, {"preset": "as_before", "targets": []})
         validate_export_mapping(DEFAULT_EXPORT_MAPPING)

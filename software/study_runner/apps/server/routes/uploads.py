@@ -10,9 +10,26 @@ from study_runner.runtime_core.delivery.upload_jobs_service import (
     MAX_STATUS_DAYS,
     UploadJobError,
 )
+from study_runner.runtime_core.delivery import notion_backfill_service
 
 
 bp = Blueprint("uploads", __name__)
+
+
+@bp.route("/api/admin/notion/backfill", methods=["POST"])
+def notion_backfill():
+    payload = request.get_json(silent=True) or {}
+    study_id = str(payload.get("study_id") or "").strip()
+    if not study_id:
+        return jsonify({"ok": False, "error": "study_id is required."}), 400
+    try:
+        if payload.get("confirm") is True:
+            return jsonify(notion_backfill_service.enqueue(current_app, study_id))
+        report = notion_backfill_service.review(current_app, study_id)
+        return jsonify({"ok": True, "sessions": report["sessions"],
+                        "unresolved_cards": report["unresolved_cards"]})
+    except (ValueError, FileNotFoundError) as error:
+        return jsonify({"ok": False, "error": str(error)}), 400
 
 
 def _service():

@@ -172,7 +172,7 @@ def upload_study_result(
 
     export_mapping = study_settings.get("notion_export_mapping")
     if isinstance(export_mapping, dict) and export_mapping.get("preset") not in (None, "", "as_before") and export_mapping.get("targets"):
-        return _upload_via_export_mapping(client, export_mapping, result_payload, saved_output, config_data)
+        return _upload_via_export_mapping(client, export_mapping, result_payload, saved_output, config_data, key)
 
     study_config_updates: dict[str, str] = {}
     try:
@@ -538,7 +538,61 @@ def describe_output_catalog(*, config_data_json: str) -> dict[str, Any]:
     return {"ok": True, "sources": mapping_module.build_output_catalog(config_data)}
 
 
-def describe_session_sources(*, data_dir: Any, session_path: str) -> dict[str, Any]:
+def check_mapping(*, mapping_json: str, config_data_json: str) -> dict[str, Any]:
+    """Check a draft against the current study without a finished session."""
+    from . import mapping as mapping_module
+
+    try:
+        mapping = json.loads(mapping_json)
+        config_data = json.loads(config_data_json)
+        if not isinstance(config_data, dict):
+            raise ValueError("config_data_json must be an object.")
+        mapping_module.validate_export_mapping(mapping, config_data=config_data)
+    except (json.JSONDecodeError, ValueError, mapping_module.MappingError) as error:
+        return {"ok": False, "error": str(error)}
+    sources = mapping_module.build_output_catalog(config_data)
+    known = {item["source"]: item for item in sources}
+    unavailable = sorted({
+        column["source"]
+        for target in mapping.get("targets") or []
+        for column in target.get("columns", {}).values()
+        if column.get("source") not in known and not str(column.get("source") or "").startswith("card[")
+    })
+    mismatches = []
+    for target in mapping.get("targets") or []:
+        for name, column in (target.get("columns") or {}).items():
+            source = known.get(column.get("source"))
+            value_type = source.get("value_type") if source else None
+            target_type = column.get("type")
+            if (target_type == "number" and value_type == "date") or (
+                target_type == "date" and value_type == "number"
+            ) or (target_type in {"select", "multi_select"} and value_type == "date"):
+                mismatches.append(f"{target['title']}: {name} ({value_type} → {target_type})")
+    return {"ok": True, "unavailable_sources": unavailable, "type_mismatches": mismatches, "sources": len(sources)}
+
+
+def prepare_mapped_schema(*, api_key: str, mapping_json: str, apply: bool) -> dict[str, Any]:
+    """Preview or apply the Notion properties needed by mapped relations."""
+    from . import linked_targets, mapping as mapping_module
+
+    try:
+        mapping = json.loads(mapping_json)
+        mapping_module.validate_export_mapping(mapping)
+        if any(not target.get("database_id") for target in mapping.get("targets") or []):
+            raise ValueError("Attach every target to a database before preparing Notion columns.")
+        client = get_client(api_key)
+        if client is None:
+            raise ValueError("Notion client is not ready.")
+        changes = linked_targets.prepare_schema(client, mapping, apply=apply)
+        return {"ok": True, "changes": changes}
+    except (json.JSONDecodeError, ValueError, mapping_module.MappingError) as error:
+        return {"ok": False, "error": str(error)}
+    except Exception as error:
+        permanent, message = classify_notion_error(error)
+        return {"ok": False, "error": message, "permanent": permanent}
+
+
+def describe_session_sources(*, data_dir: Any, session_path: str, study_id: str = "") -> dict[str, Any]:
     """Every source id actually available from one real session.
 
     Reads the session already on disk - no Notion call - so the
@@ -549,13 +603,15 @@ def describe_session_sources(*, data_dir: Any, session_path: str) -> dict[str, A
     from . import mapping as mapping_module
 
     try:
-        _result_payload, card_summary = _read_session_summary(data_dir, session_path)
+        result_payload, card_summary = _read_session_summary(data_dir, session_path)
+        if study_id and result_payload.get("study_id") != study_id:
+            raise ValueError("This session does not belong to the current study.")
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     return {"ok": True, "sources": mapping_module.available_card_sources(card_summary)}
 
 
-def preview_mapping(*, data_dir: Any, mapping_json: str, session_path: str) -> dict[str, Any]:
+def preview_mapping(*, data_dir: Any, mapping_json: str, session_path: str, study_id: str = "") -> dict[str, Any]:
     """Compute what an export mapping would write, from a real finished
     session already on disk - no Notion API call, so it is always safe to
     run before saving."""
@@ -571,6 +627,8 @@ def preview_mapping(*, data_dir: Any, mapping_json: str, session_path: str) -> d
         return {"ok": False, "error": str(error)}
     try:
         result_payload, card_summary = _read_session_summary(data_dir, session_path)
+        if study_id and result_payload.get("study_id") != study_id:
+            raise ValueError("This session does not belong to the current study.")
     except ValueError as error:
         return {"ok": False, "error": str(error)}
     context = mapping_module.session_context(result_payload, card_summary)
@@ -594,7 +652,11 @@ def preview_mapping(*, data_dir: Any, mapping_json: str, session_path: str) -> d
 
 def _notion_property_value(column_type: str, value: Any) -> dict[str, Any]:
     if value is None:
-        return {"rich_text": []} if column_type not in {"number", "date"} else {column_type: None}
+        if column_type == "multi_select":
+            return {"multi_select": []}
+        if column_type == "rich_text":
+            return {"rich_text": []}
+        return {column_type: None}
     if column_type == "number":
         return {"number": value}
     if column_type == "date":
@@ -613,7 +675,7 @@ def _upsert_mapped_row(
     key_column: str,
     key_value: str,
     notion_properties: dict[str, Any],
-) -> str:
+) -> tuple[str, str]:
     db_id = _notion_id(database_id)
     if hasattr(client, "data_sources"):
         source_id = _data_source_of(client, db_id)
@@ -628,9 +690,9 @@ def _upsert_mapped_row(
         parent_obj = {"database_id": db_id}
     if rows:
         client.pages.update(page_id=rows[0]["id"], properties=notion_properties)
-        return "updated"
-    client.pages.create(parent=parent_obj, properties=notion_properties)
-    return "created"
+        return "updated", str(rows[0]["id"])
+    page = client.pages.create(parent=parent_obj, properties=notion_properties)
+    return "created", str(page["id"])
 
 
 def _upload_via_export_mapping(
@@ -639,6 +701,7 @@ def _upload_via_export_mapping(
     result_payload: dict[str, Any],
     saved_output: dict[str, Any],
     config_data: dict[str, Any],
+    api_key: str = "",
 ) -> dict[str, Any]:
     """The flexible-targets path: one upsert per target (or per card, for a
     card-level target), instead of the fixed participants/sessions flow."""
@@ -661,8 +724,15 @@ def _upload_via_export_mapping(
     card_summary = saved_output.get("card_summary") if isinstance(saved_output.get("card_summary"), dict) else {}
     context = mapping_module.session_context(result_payload, card_summary, config_data)
     rows_written = []
+    page_ids: dict[tuple[str, str], str] = {}
     where = ""
     try:
+        from . import linked_targets
+
+        missing_schema = linked_targets.prepare_schema(client, export_mapping, apply=False)
+        if missing_schema:
+            names = ", ".join(f"{item['target']}: {item['property']}" for item in missing_schema)
+            raise ValueError(f"Prepare these Notion columns in the configurator before uploading: {names}")
         for target in export_mapping.get("targets", []):
             key_column = mapping_module.key_column_for(target)
             for row in mapping_module.evaluate_target(target, context):
@@ -674,8 +744,22 @@ def _upload_via_export_mapping(
                 for name, value in row["properties"].items():
                     column_type = target["columns"][name]["type"]
                     notion_properties[name] = _notion_property_value(column_type, value)
-                outcome = _upsert_mapped_row(client, target["database_id"], key_column, key, notion_properties)
+                if target["row_level"] in {"session", "card"} and (target.get("relations") or target.get("comparison_views")):
+                    if context["session"].get("start"):
+                        notion_properties[linked_targets.SESSION_START_PROPERTY] = _notion_property_value("date", context["session"]["start"])
+                if target["row_level"] == "card" and (target.get("relations") or target.get("comparison_views")):
+                    card = context["cards"][row["card_index"]]
+                    notion_properties[linked_targets.CARD_ID_PROPERTY] = _notion_property_value("rich_text", card["id"])
+                    notion_properties[linked_targets.CARD_REVISION_PROPERTY] = _notion_property_value("rich_text", card["revision"])
+                outcome, page_id = _upsert_mapped_row(client, target["database_id"], key_column, key, notion_properties)
+                page_ids[(target["id"], key)] = page_id
                 rows_written.append({"target_id": target["id"], "key": key, "outcome": outcome})
+        needs_views = any(
+            target.get("comparison_views") or any(relation.get("linked_view") for relation in target.get("relations") or [])
+            for target in export_mapping.get("targets", [])
+        )
+        views = linked_targets.view_client(api_key, int(_config.get("timeout_seconds") or 10)) if needs_views else None
+        linked_targets.publish_links(client, views, export_mapping, page_ids, context, _notion_property_value)
     except Exception as error:
         print(f"[NOTION] Mapped upload failed at {where}: {error}")
         permanent, message = classify_notion_error(error)
