@@ -18,6 +18,7 @@ import {
   confirmDegradedFinalization,
   continueFinalization,
   openFinalizationFolder,
+  republishFinalizationStep,
   retryFinalizationStep,
 } from './finalization-actions.js';
 
@@ -584,6 +585,7 @@ async function renderProgressRail(session) {
   const options = { showToast: callbacks.showToast, onDone: reload };
   renderSessionProgressRail(body, session, job, {
     onRetry: (id, stepKey) => retryFinalizationStep(id, stepKey, options),
+    onRepublish: (id, stepKey, label) => republishFinalizationStep(id, stepKey, label, options),
     onConfirmDegraded: (id, reason) => confirmDegradedFinalization(id, reason, options),
     onContinue: (id) => continueFinalization(id, options),
     onOpenFolder: (id) => openFinalizationFolder(id, options),

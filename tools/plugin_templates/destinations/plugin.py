@@ -12,6 +12,15 @@ location and reports the outcome; this example uploads nothing and always
 reports success, to prove the contract shape without any network code.
 The child process checks this callback at startup and rejects undeclared
 operations.
+
+Publishing must be idempotent per session: the operator can "Upload again"
+any finished upload (session detail view), and the same session then
+arrives a second time, with the study's current settings. Update or
+overwrite what this session published before; never add a duplicate.
+A destination with discovered settings (a created folder or database id)
+can list the hand-entered settings that name the target in
+`upload_destination.target_settings`; only a change to those then makes
+the discovered ones start over.
 See `study_runner/plugins/destinations/nextcloud_upload/plugin.py` for a
 complete, real implementation once you outgrow this template.
 """

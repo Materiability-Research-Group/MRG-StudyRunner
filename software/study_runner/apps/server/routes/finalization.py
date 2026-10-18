@@ -75,6 +75,18 @@ def retry_finalization(job_id: str):
         return jsonify({"ok": False, "error": str(error)}), 409
 
 
+@bp.route("/api/finalization/<job_id>/republish", methods=["POST"])
+def republish_finalization(job_id: str):
+    """Upload a finished session to one destination again, with current settings."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        return jsonify({"ok": True, "job": _service().republish(job_id, step_key=str(payload.get("step") or ""))})
+    except FinalizationNotFoundError as error:
+        return jsonify({"ok": False, "error": str(error)}), 404
+    except (InvalidTransitionError, FinalizationError) as error:
+        return jsonify({"ok": False, "error": str(error)}), 409
+
+
 @bp.route("/api/finalization/<job_id>/acknowledge", methods=["POST"])
 def acknowledge_finalization(job_id: str):
     try:

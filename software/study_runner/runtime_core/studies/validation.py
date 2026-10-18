@@ -993,8 +993,8 @@ def _validate_plugin_study_settings(
                     raise ValidationError(f"{path} must be at most {maximum}.")
                 settings[name] = int(value) if value.is_integer() else value
             elif field_type == "object":
-                # An opaque, plugin-owned JSON document (e.g. Notion's export
-                # mapping): too shaped for a generic field, so this validates
+                # An opaque, plugin-owned JSON document (e.g. Notion's table
+                # layout): too shaped for a generic field, so this validates
                 # only size and that the plugin itself accepts the shape -
                 # see Plugin.validate_study_setting, the same hook a "url"
                 # field with a declared format uses for its own shape.

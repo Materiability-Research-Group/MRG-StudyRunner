@@ -134,13 +134,22 @@ class UploadJobService:
         metadata: dict[str, Any] | None = None,
         job_id: str | None = None,
         created_epoch: float | None = None,
+        retry_target: str = "snapshot",
     ) -> dict[str, Any]:
+        """Queue one upload; an existing ``job_id`` is returned unchanged.
+
+        ``retry_target="current"`` makes every attempt use the study's
+        current destination settings instead of the frozen snapshot, which is
+        what an operator's "upload again" asks for.
+        """
         normalized_kind = str(kind or "").strip()
         if not normalized_kind or not SAFE_JOB_ID.fullmatch(normalized_kind):
             raise UploadJobError(f"Unsupported upload kind: {normalized_kind or '(empty)'}")
         normalized_job_id = str(job_id or uuid.uuid4()).strip()
         if not SAFE_JOB_ID.fullmatch(normalized_job_id):
             raise UploadJobError("Upload job ID is invalid.")
+        if retry_target not in RETRY_TARGETS:
+            raise UploadJobError(f"Unsupported retry target: {retry_target}")
         now = float(created_epoch if created_epoch is not None else self._clock())
 
         with self._lock:
@@ -164,7 +173,7 @@ class UploadJobService:
                 "next_attempt_epoch": now,
                 "status": "queued",
                 "last_error": "",
-                "retry_target": "snapshot",
+                "retry_target": retry_target,
                 "steps": [
                     {"key": "local_save", "status": "done"},
                     {"key": normalized_kind, "status": "queued"},
@@ -286,12 +295,24 @@ class UploadJobService:
                 acknowledged.append(job["job_id"])
         return {"ok": True, "acknowledged": acknowledged}
 
-    def describe_retry_target(self, job_id: str) -> dict[str, Any]:
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        """One job by id, however old it is (``status`` only lists recent ones)."""
+        with self._lock:
+            job = self._jobs.get(str(job_id or "").strip())
+            return _public_job(job) if job is not None else None
+
+    def describe_retry_target(
+        self,
+        job_id: str,
+        *,
+        fallback_payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Compare a job's frozen destination settings with the study's current ones.
 
         Used before an operator-initiated retry so a target that moved since
         the session finished (a changed Notion page, for example) can be
-        shown instead of silently replayed.
+        shown instead of silently replayed. A done job's payload file is
+        deleted, so the caller may pass the frozen ``config_data`` instead.
         """
         with self._lock:
             job = self._jobs.get(str(job_id or "").strip())
@@ -309,7 +330,7 @@ class UploadJobService:
                 payload = json.loads(payload_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 payload = None
-        return describer(public, payload)
+        return describer(public, payload if payload is not None else fallback_payload)
 
     def retry(
         self,

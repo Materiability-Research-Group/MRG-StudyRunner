@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from .destination_plugin_service import installed_destination_definitions
-from .finalization_service import FinalizationService, UploadJobDestinationHandler
+from .finalization_service import FinalizationService
+from .upload_job_destination_handler import UploadJobDestinationHandler
 
 
 def configure_finalization(app) -> FinalizationService:

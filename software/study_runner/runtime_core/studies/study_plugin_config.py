@@ -341,7 +341,9 @@ def reset_stale_upload_discoveries(
 
     A discovered field is left alone when the same save explicitly set it to
     something new - that is the operator (or a replay) supplying the value
-    on purpose, not a leftover from before.
+    on purpose, not a leftover from before. A destination that declares
+    ``target_settings`` resets only when one of those changes; its other
+    settings (e.g. which columns to fill) never move the target.
     """
 
     available = manifests if manifests is not None else _plugin_manifests()
@@ -367,7 +369,7 @@ def reset_stale_upload_discoveries(
             continue
 
         schema = manifest.get("study_settings_schema") or {}
-        hand_entered_fields = set(schema.keys()) - discovered_fields
+        hand_entered_fields = set(capability.get("target_settings") or schema.keys()) - discovered_fields
         changed_by_hand = any(
             previous_values.get(field) != next_values.get(field) for field in hand_entered_fields
         )

@@ -29,25 +29,12 @@ function confirmRetryTarget(fields) {
       closeLabel: t('finalization.retryTargetCancel', 'Cancel'),
       onClose: () => finish(null),
     });
-    const rows = fields.map((field) => `
-      <tr>
-        <td>${escapeHtml(t(field.label_key, field.name))}</td>
-        <td class="retry-target-then">${escapeHtml(field.snapshot || '—')}</td>
-        <td class="retry-target-now">${escapeHtml(field.current || '—')}</td>
-      </tr>`).join('');
     modal.body.innerHTML = `
       <p class="settings-hint">${escapeHtml(t(
         'finalization.retryTargetHint',
         'This session finished with different settings than the study has now. Choose which one the retry should use.',
       ))}</p>
-      <table class="retry-target-table">
-        <thead><tr>
-          <th>${escapeHtml(t('finalization.retryTargetField', 'Setting'))}</th>
-          <th>${escapeHtml(t('finalization.retryTargetThen', 'Then'))}</th>
-          <th>${escapeHtml(t('finalization.retryTargetNow', 'Now'))}</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      ${targetTable(fields)}
       <div class="dashboard-actions confirm-modal-actions">
         <button type="button" class="btn-secondary" data-retry-target="snapshot">
           ${escapeHtml(t('finalization.retryTargetKeepOriginal', 'Keep original target'))}
@@ -61,6 +48,81 @@ function confirmRetryTarget(fields) {
     });
     modal.open();
   });
+}
+
+function targetTable(fields) {
+  const rows = fields.map((field) => `
+      <tr>
+        <td>${escapeHtml(t(field.label_key, field.name))}</td>
+        <td class="retry-target-then">${escapeHtml(field.snapshot || '—')}</td>
+        <td class="retry-target-now">${escapeHtml(field.current || '—')}</td>
+      </tr>`).join('');
+  return `
+      <table class="retry-target-table">
+        <thead><tr>
+          <th>${escapeHtml(t('finalization.retryTargetField', 'Setting'))}</th>
+          <th>${escapeHtml(t('finalization.retryTargetThen', 'Then'))}</th>
+          <th>${escapeHtml(t('finalization.retryTargetNow', 'Now'))}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+}
+
+/** Resolves true when the operator confirmed uploading the session again. */
+function confirmRepublish(label, fields) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.destroy();
+      resolve(value);
+    };
+    const modal = createModal({
+      title: t('finalization.republish.title', 'Upload to {destination} again?').replace('{destination}', label),
+      closeLabel: t('common.cancel', 'Cancel'),
+      onClose: () => finish(false),
+    });
+    modal.body.innerHTML = `
+      <p class="settings-hint">${escapeHtml(t(
+        'finalization.republish.hint',
+        'The destination receives this session again, built with the study\'s current settings. What it already holds from this session is updated, not duplicated. The local data does not change.',
+      ))}</p>
+      ${fields.length ? `
+        <p class="settings-hint">${escapeHtml(t('finalization.republish.changed', 'These settings changed since the session ended:'))}</p>
+        ${targetTable(fields)}` : ''}
+      <div class="dashboard-actions confirm-modal-actions">
+        <button type="button" class="btn-secondary" data-republish-cancel>${escapeHtml(t('common.cancel', 'Cancel'))}</button>
+        <button type="button" class="btn-primary" data-republish-confirm>
+          <i class="iconoir-upload"></i> ${escapeHtml(t('finalization.republish.confirm', 'Upload again'))}
+        </button>
+      </div>`;
+    modal.body.querySelector('[data-republish-cancel]')?.addEventListener('click', () => finish(false));
+    modal.body.querySelector('[data-republish-confirm]')?.addEventListener('click', () => finish(true));
+    modal.open();
+    modal.body.querySelector('[data-republish-confirm]')?.focus();
+  });
+}
+
+/** Upload a finished session to one destination again, with current settings. */
+export async function republishFinalizationStep(jobId, stepKey, label, { showToast, onDone } = {}) {
+  let fields = [];
+  try {
+    const comparison = await getJson(`${jobUrl(jobId, 'retry-target')}?step=${encodeURIComponent(stepKey)}`);
+    if (comparison?.differs && Array.isArray(comparison.fields)) fields = comparison.fields;
+  } catch (error) {
+    // Only an explanation for the dialog; uploading again works without it.
+    console.error('[finalization] Could not compare the upload target:', error);
+  }
+  if (!await confirmRepublish(label, fields)) return;
+  try {
+    await postJson(jobUrl(jobId, 'republish'), { step: stepKey });
+    showToast?.(t('finalization.republish.started', 'Uploading again…'), 'success');
+  } catch (error) {
+    console.error('[finalization] Upload again failed:', error);
+    showToast?.(error?.message || t('finalization.republish.failed', 'The session could not be uploaded again'), 'error');
+  }
+  await onDone?.();
 }
 
 export async function retryFinalizationStep(jobId, stepKey, { showToast, onDone } = {}) {

@@ -44,7 +44,7 @@
       "path": "software/study_runner/clock_core/assessment.py"
     },
     "contracts": {
-      "lines": 1543,
+      "lines": 1554,
       "path": "software/study_runner/contracts/manifest.py"
     },
     "data_core": {
@@ -76,7 +76,7 @@
       "path": "software/study_runner/plugins/cards/affect_map/plugin.py"
     },
     "plugins.destinations": {
-      "lines": 1634,
+      "lines": 510,
       "path": "software/study_runner/plugins/destinations/notion_upload/adapter.py"
     },
     "plugins.outputs": {
@@ -88,7 +88,7 @@
       "path": "software/study_runner/plugins/sensors/brainbit/adapter.py"
     },
     "runtime_core": {
-      "lines": 1926,
+      "lines": 1827,
       "path": "software/study_runner/runtime_core/delivery/finalization_service.py"
     },
     "shared": {
@@ -102,15 +102,15 @@
   },
   "lines_per_package": {
     "apps": 0,
-    "apps.server": 5500,
+    "apps.server": 5495,
     "apps.ui": 0,
-    "apps.ui.admin": 6323,
+    "apps.ui.admin": 6397,
     "apps.ui.cards": 4904,
     "apps.ui.participant": 3445,
     "apps.ui.settings": 2291,
     "apps.ui.shared": 3174,
     "clock_core": 654,
-    "contracts": 3092,
+    "contracts": 3103,
     "data_core": 16,
     "data_core.contract": 1184,
     "data_core.host": 7056,
@@ -118,10 +118,10 @@
     "plugin_framework": 4224,
     "plugins": 0,
     "plugins.cards": 1465,
-    "plugins.destinations": 5068,
+    "plugins.destinations": 3295,
     "plugins.outputs": 142,
     "plugins.sensors": 11598,
-    "runtime_core": 16496,
+    "runtime_core": 16462,
     "shared": 466,
     "updates": 744
   }

@@ -159,6 +159,13 @@ fixing it. Wrong credentials or an unshared page fail at once; network problems
 are retried automatically. The **(?)** button in each plugin's settings
 explains every field.
 
+A finished upload can be sent again: in the session's **Completion & uploads**
+card, every done upload step offers **Upload again**. It uses the study's
+current settings, so after changing what a study sends to Notion (Study
+settings > Notion > **Configure…**), earlier sessions can be brought up to
+date one by one. The destination updates what that session sent before
+instead of adding a copy.
+
 ## Plugin-Driven UI
 
 The server discovers trusted integration folders and validates their manifests

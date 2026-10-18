@@ -28,6 +28,7 @@ record. The active documentation is in the parent folder, listed in the
 | `08_ui_localization.md` | How the browser UI became localizable. |
 | `09_python_auto_update.md` | The Python-server update flow. |
 | `10_biosignal_audit_and_limitations.md` | Sensor limitations and the research-grade boundary. |
+| `notion-plugin-configurator-plan.md` | The Notion export-mapping configurator of plugin 1.4-1.6 (targets, reducers, node graph). Replaced by the fixed layout of plugin 2.0, described in the plugin's own README. |
 
 ## Dropped from these plans
 

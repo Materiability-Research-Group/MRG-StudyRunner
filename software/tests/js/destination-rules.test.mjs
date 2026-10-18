@@ -98,5 +98,5 @@ test('Notion and Nextcloud show only "Test connection", and it asks for nothing'
 test('Notion keeps its IDs out of the main area and asks only for the parent page', () => {
   const { main, details } = splitDestinationFields(manifest('notion_upload'));
   assert.deepEqual(main.map(([name]) => name), ['parent_page_id']);
-  assert.deepEqual(details.map(([name]) => name), ['database_id', 'data_source_id', 'sessions_database_id']);
+  assert.deepEqual(details.map(([name]) => name), ['database_id', 'data_source_id', 'comparison_page_id']);
 });

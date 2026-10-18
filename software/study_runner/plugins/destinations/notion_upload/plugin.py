@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
 from study_runner.plugin_framework.adapter_utils import config_section
@@ -56,39 +55,15 @@ def _message(enabled: bool, has_key: bool, connected: bool) -> str:
 
 
 def _publish(context: PluginContext, payload: dict[str, Any]) -> dict[str, Any]:
-    """Execute one queued publication through the plugin boundary.
-
-    The existing adapter still consumes its historic flat field names. They
-    are projected only into this private attempt copy; persisted study files
-    remain canonical manifest-backed plugin selections.
-    """
-
+    """Execute one queued publication through the plugin boundary."""
     from . import adapter
 
-    config_data = deepcopy(payload.get("config_data") or {})
-    study_settings = config_data.setdefault("study_settings", {})
-    plugins = study_settings.get("plugins")
-    selection = plugins.get("notion") if isinstance(plugins, dict) else None
-    if isinstance(selection, dict):
-        plugin_settings = selection.get("settings")
-        plugin_settings = plugin_settings if isinstance(plugin_settings, dict) else {}
-        study_settings.update(
-            {
-                "notion_enabled": bool(selection.get("enabled")),
-                "notion_parent_page_id": str(plugin_settings.get("parent_page_id") or "").strip(),
-                "notion_database_id": str(plugin_settings.get("database_id") or "").strip(),
-                "notion_data_source_id": str(plugin_settings.get("data_source_id") or "").strip(),
-                "notion_sessions_database_id": str(plugin_settings.get("sessions_database_id") or "").strip(),
-                "notion_export_mapping": plugin_settings.get("export_mapping") or {},
-            }
-        )
-
+    config_data = payload.get("config_data") or {}
     # The key is usually stored per study (Study settings > Notion); the
     # machine-level key is only the fallback.
     study_id = str(config_data.get("study_id") or "").strip()
     return adapter.upload_study_result(
         result_payload=payload.get("result_payload") or {},
-        hardware_config=payload.get("hardware_config") or context.hardware_config,
         saved_output=payload.get("saved_output") or {},
         config_data=config_data,
         api_key=context.secret("notion", study_id),
@@ -117,46 +92,26 @@ def _run_admin_action(
             parent_page_id=str(payload.get("parent_page_id") or ""),
             database_id=str(payload.get("database_id") or ""),
         )
-    if action_key == "list_children":
-        return adapter.list_children(
-            api_key=api_key,
-            page_id=str(payload.get("page_id") or ""),
-            cursor=str(payload.get("cursor") or "") or None,
-        )
-    if action_key == "describe_database":
-        return adapter.describe_database(api_key=api_key, database_id=str(payload.get("database_id") or ""))
-    if action_key == "create_database":
-        return adapter.create_notion_database(
-            api_key=api_key,
-            parent_page_id=str(payload.get("parent_page_id") or ""),
-            title=str(payload.get("title") or ""),
-            row_level=str(payload.get("row_level") or ""),
-            columns_json=str(payload.get("columns_json") or "[]"),
-            key_column=str(payload.get("key_column") or ""),
-        )
-    if action_key == "describe_output_catalog":
-        return adapter.describe_output_catalog(config_data_json=str(payload.get("config_data_json") or "{}"))
-    if action_key == "check_mapping":
-        return adapter.check_mapping(
-            mapping_json=str(payload.get("mapping_json") or "{}"),
-            config_data_json=str(payload.get("config_data_json") or "{}"),
-        )
-    if action_key == "prepare_schema":
-        return adapter.prepare_mapped_schema(
-            api_key=api_key,
-            mapping_json=str(payload.get("mapping_json") or "{}"),
-            apply=payload.get("apply") is True,
-        )
-    if action_key == "describe_session_sources":
-        return adapter.describe_session_sources(
+    if action_key == "describe_layout_sources":
+        return adapter.describe_layout_sources(
             data_dir=context.data_dir,
+            config_data_json=str(payload.get("config_data_json") or "{}"),
             session_path=str(payload.get("session_path") or ""),
             study_id=study_id,
         )
-    if action_key == "preview_mapping":
-        return adapter.preview_mapping(
+    if action_key == "check_structure":
+        return adapter.check_structure(
+            api_key=api_key,
+            layout_json=str(payload.get("layout_json") or "{}"),
+            config_data_json=str(payload.get("config_data_json") or "{}"),
+            settings_json=str(payload.get("settings_json") or "{}"),
+            apply=payload.get("apply") is True,
+        )
+    if action_key == "preview_layout":
+        return adapter.preview_layout(
             data_dir=context.data_dir,
-            mapping_json=str(payload.get("mapping_json") or "{}"),
+            layout_json=str(payload.get("layout_json") or "{}"),
+            config_data_json=str(payload.get("config_data_json") or "{}"),
             session_path=str(payload.get("session_path") or ""),
             study_id=study_id,
         )
@@ -167,8 +122,8 @@ def _validate_setting(field_name: str, encoded_value: str) -> None:
     """`Plugin.validate_study_setting`: the shape of this plugin's own fields.
 
     Called by `_validate_plugin_study_settings` for a field that declares a
-    format (the parent page, as typed) and for the "object" field (the export
-    mapping, JSON-encoded) - see runtime_core/studies/validation.py.
+    format (the parent page, as typed) and for the "object" field (the
+    layout, JSON-encoded) - see runtime_core/studies/validation.py.
     """
     if field_name == "parent_page_id":
         from .notion_ids import notion_id_from_input
@@ -179,19 +134,19 @@ def _validate_setting(field_name: str, encoded_value: str) -> None:
                 "••• > Copy link, and paste the link here."
             )
         return
-    if field_name != "export_mapping":
+    if field_name != "notion_layout":
         return
     import json
 
-    from .mapping import MappingError, validate_export_mapping
+    from .layout import LayoutError, validate_layout
 
     try:
         value = json.loads(encoded_value)
     except json.JSONDecodeError as error:
         raise ValueError(f"must be valid JSON: {error}") from error
     try:
-        validate_export_mapping(value)
-    except MappingError as error:
+        validate_layout(value)
+    except LayoutError as error:
         raise ValueError(str(error)) from error
 
 

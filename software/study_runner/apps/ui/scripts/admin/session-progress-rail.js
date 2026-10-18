@@ -5,7 +5,8 @@
  * is also where a click on the finalization notice leads.
  *
  * Steps come from the finalization job as-is, so a new destination plugin
- * appears here without any change to this file.
+ * appears here without any change to this file. Every finished upload offers
+ * "Upload again" alike (job.republishable_steps).
  */
 import { t } from '../shared/i18n.js';
 import { escapeHtml, formatDateTime } from '../shared/dom-utils.js';
@@ -51,6 +52,7 @@ export function renderSessionProgressRail(container, session, job, actions = {})
       // summary row could not be updated); show it instead of a plain "Done".
       notice: step.status === 'done' ? String(step.details?.result?.message || '') : '',
       retryable: ['failed', 'retrying'].includes(step.status),
+      republishable: (job.republishable_steps || []).includes(step.key),
     })),
   ];
   if (!job) {
@@ -90,6 +92,10 @@ export function renderSessionProgressRail(container, session, job, actions = {})
   container.querySelectorAll('[data-retry-step]').forEach((button) => {
     bindAsyncAction(button, () => actions.onRetry?.(job.job_id, button.dataset.retryStep));
   });
+  container.querySelectorAll('[data-republish-step]').forEach((button) => {
+    const step = steps.find((item) => item.key === button.dataset.republishStep);
+    bindAsyncAction(button, () => actions.onRepublish?.(job.job_id, step.key, step.label));
+  });
   bindAsyncAction(container.querySelector('[data-action="open-session-folder"]'), () => actions.onOpenFolder?.(job.job_id));
   bindAsyncAction(container.querySelector('[data-continue-processing]'), () => actions.onContinue?.(job.job_id));
   const reasonInput = container.querySelector('[data-degraded-reason]');
@@ -126,7 +132,7 @@ function statusText(status) {
   return labels[status] || t('finalization.stepStatus.pending', 'Pending');
 }
 
-function renderStep(step) {
+export function renderStep(step) {
   const status = STEP_ICONS[step.status] ? step.status : 'pending';
   const title = [step.label, statusText(status), step.error].filter(Boolean).join(' · ');
   return `
@@ -134,6 +140,10 @@ function renderStep(step) {
       <span class="progress-rail-dot"><i class="${STEP_ICONS[status]}"></i></span>
       <span class="progress-rail-label">${escapeHtml(step.label)}</span>
       <span class="progress-rail-hint">${escapeHtml(step.hint || '')}</span>
+      ${step.republishable ? `
+        <button class="progress-rail-again" type="button" data-republish-step="${escapeHtml(step.key)}">
+          <i class="iconoir-refresh"></i> ${escapeHtml(t('finalization.republish.button', 'Upload again'))}
+        </button>` : ''}
     </li>`;
 }
 

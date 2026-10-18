@@ -5,6 +5,24 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Added
+
+- **Upload again.** In a session's "Completion & uploads" card, every finished upload step now offers "Upload again", for every destination plugin alike. It uploads that one session again with the study's current settings - for example after changing what the study sends to Notion - and leaves the session's status, quality and every other step as they are. A dialog names the destination settings that changed since the session ended. A withdrawn session cannot be uploaded again.
+
+### Changed
+
+- **Notion plugin 2.0.0 (breaking).** The configurable targets, reducers, relations, aggregates, Notion views and both node graphs are replaced by one fixed structure with opt-ins: a **Participants** table on the study's Notion page (choose its columns: sessions, first and last session, stored intake fields); optionally an **Answers** table inside each participant's page, one row per session and card; and optionally a **Card comparison** page with one table per card, one row per session, typed columns (a slider answer is a number, a single choice a select, a semantic differential one number per pair) and a link to the participant's row. One list of values (answer, duration, sensor statistics) applies to every card, each with its own choice of the answers table and the card comparison. A skipped or not shown card still gets its row, with a Status column and missing codes (9999 and "n.a." by default, adjustable). The configurator shows these four steps next to a live "What Notion will look like" tree, checks or creates the tables in Notion, and previews a recorded session. Every write is update-or-create, so a retry or "Upload again" never duplicates rows, and nothing in Notion is ever deleted. Studies of plugin 1.x keep their parent page; their "StudyRunner Participants" table is taken over, the old sessions table is left untouched, and earlier sessions move into the new structure with "Upload again". The setting is now `notion_layout`; `export_mapping` and `sessions_database_id` are no longer read.
+- A destination plugin can name the settings that point at its target (`upload_destination.target_settings`). Only a change to those makes its saved ids start over, so editing the Notion layout keeps the found tables.
+
+### Removed
+
+- The Notion backfill ("Review saved sessions", `POST /api/admin/notion/backfill`); "Upload again" replaces it.
+
+### Fixed
+
+- Retrying an upload of a session older than 30 days did nothing: the upload job was looked up only among the last 30 days.
+- Notion uploads of large sessions no longer fail on Notion's rate limit: calls are paced and a `rate_limited` answer is waited out.
+
 ## 1.7.21 - 2026-10-12
 
 ### Added

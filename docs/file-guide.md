@@ -128,7 +128,6 @@ The one place that knows how clocks relate; see `docs/recording-finalization-wor
 | `software/study_runner/runtime_core/delivery/withdrawal_service.py` | Consent withdrawal: stops writers, cancels pending uploads, deletes the session tree and the journal copies outside it, then leaves a `WITHDRAWN.json` tombstone; its ledger lives outside the folder it empties so an interrupted run can resume | dangerous |
 | `software/study_runner/runtime_core/delivery/upload_jobs_service.py` | Persistent upload journal, crash replay, backoff worker, and retry state | no |
 | `software/study_runner/runtime_core/delivery/upload_runtime.py` | Registers manifest-declared destination plugin handlers with persistent upload jobs | no |
-| `software/study_runner/runtime_core/delivery/notion_backfill_service.py` | Reviews historical card identities and enqueues eligible Notion uploads through the persistent job service | careful |
 | `software/study_runner/runtime_core/settings/folder_open_service.py` | Validates and opens result folders on Windows or macOS | no |
 | `software/study_runner/runtime_core/settings/data_folder.py` | Where studies, results, settings and the certificate live: `<install>/data-folder.json` > program folder (`STUDY_RUNNER_DATA_DIR` by hand wins); folder marker, check before linking, missing drive stops the start, remembered folders for relinking, native folder dialog | careful |
 | `software/study_runner/runtime_core/settings/runtime_config.py` | Paths, ports, app mode, data-folder resolution | careful |
@@ -152,6 +151,7 @@ The one place that knows how clocks relate; see `docs/recording-finalization-wor
 | `software/study_runner/runtime_core/studies/card_summary_service.py` | Pure merged-XDF-to-card-statistics derivation | no |
 | `software/study_runner/runtime_core/delivery/finalization_runtime.py` | Wires the persistent finalizer to recording and upload adapters | no |
 | `software/study_runner/runtime_core/delivery/finalization_service.py` | Durable, idempotent session-finalization state machine and journal replay | no |
+| `software/study_runner/runtime_core/delivery/upload_job_destination_handler.py` | Turns each finalization upload step into a persistent upload job; "Upload again" gets a fresh job with current settings | no |
 | `software/study_runner/runtime_core/delivery/software_provenance.py` | Which Study Runner and plugin versions produced a session (recording, card, destination), fixed when its finalization job is created and written to `meta/manifest.json` → `provenance.software` | careful |
 | `software/study_runner/runtime_core/delivery/destination_plugin_service.py` | Converts upload-destination manifests into persisted finalization steps and recovery/purge policies | no |
 | `software/study_runner/data_core/host/plugin_health_poll_service.py` | Manifest-paced, non-blocking per-plugin health cache and bounded poll executor | careful |
@@ -300,15 +300,18 @@ recording code now, not plugins: `data_core/host/markers.py` and
 | `camera_emotion/worker/model_errors.py` | Shared DeepFace error classification + suggested fixes | careful |
 | `osc_touchdesigner/adapter.py` + `plugin.py` | Forwards values to TouchDesigner via OSC | careful |
 | `osc_touchdesigner/driver.py` | API-v5 process entry point (`run_plugin_driver("osc")`) | no |
-| `notion_upload/adapter.py` + `plugin.py` | Uploads result summaries to Notion (with offline queue) | careful |
-| `notion_upload/mapping.py` | The export mapping's evaluator: output catalog, reducers, column values for one session - no Notion client | careful |
-| `notion_upload/linked_targets.py` | Prepares Notion relation properties, writes page links and participant summaries, and creates filtered views | careful |
+| `notion_upload/adapter.py` + `plugin.py` | Notion client, connection test, upload entry point and the configurator's actions | careful |
+| `notion_upload/layout.py` | The `notion_layout` study setting: validation, defaults, which cards appear - standard library only | careful |
+| `notion_upload/answer_columns.py` | Typed comparison-table columns for each card type's answer, with a text fallback | careful |
+| `notion_upload/session_rows.py` | One session as the rows and columns the layout writes: statuses and missing codes - no Notion client | careful |
+| `notion_upload/notion_api.py` | The few Notion API calls the upload needs, paced to Notion's rate limit and retried on `rate_limited` | careful |
+| `notion_upload/structure.py` | Finds or creates the Participants, card comparison and answers tables; never deletes anything | careful |
+| `notion_upload/publisher.py` | Writes one session as update-or-create rows, so uploading again never duplicates | careful |
 | `notion_upload/notion_ids.py` | Reads a Notion page or database ID from a pasted link or ID - standard library only | careful |
-| `notion_upload/ui/configurator.js` | The study-settings configurator modal: page tree, target list, column mapping | careful |
-| `notion_upload/ui/configurator-target-links.js` | Target relation list and graph plus participant aggregate controls | careful |
-| `notion_upload/ui/configurator-transfer.js` | Versioned JSON transfer of the parent page and mapping without credentials | careful |
-| `notion_upload/ui/configurator-node-view.js` | Compiles one target's columns to a node graph and back | careful |
-| `notion_upload/ui/node-canvas.js` | Generic pan/zoom/wire node canvas, no dependency on Notion | careful |
+| `notion_upload/ui/configurator.js` | The study-settings configurator modal: four layout steps, check and create in Notion, preview with a session | careful |
+| `notion_upload/ui/layout-model.js` | The layout as plain data with the same defaults as `layout.py`, the Notion tree and the summary line | careful |
+| `notion_upload/ui/layout-sections.js` | Renders the configurator's four steps (participants, values, cards, missing values) | careful |
+| `notion_upload/ui/layout-tree-preview.js` | Renders "what Notion will look like", the check result and the session preview | careful |
 | `notion_upload/driver.py` | API-v5 process entry point (`run_plugin_driver("notion")`) | no |
 | `nextcloud_upload/plugin.py` | Declares the hidden Nextcloud destination capability, publishes, and validates its own share-link setting | careful |
 | `nextcloud_upload/webdav_client.py` | The WebDAV client: uploads session files to a writable Nextcloud public share, checksum-first | careful |

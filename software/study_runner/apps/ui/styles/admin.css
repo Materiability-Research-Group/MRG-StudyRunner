@@ -1808,7 +1808,9 @@ body.admin::before { display: none; }
   max-height: min(860px, 94vh);
 }
 
-/* A plugin workspace keeps a visible modal margin and lets each pane scroll. */
+/* A plugin workspace (the Notion configurator, notion_upload/ui/): the
+   steps on the left, what Notion will look like on the right. Keeps a
+   visible modal margin and lets each pane scroll. */
 .settings-modal--workspace {
   width: calc(100vw - var(--s-6) * 2);
   height: calc(100vh - var(--s-6) * 2);
@@ -1821,151 +1823,122 @@ body.admin::before { display: none; }
   padding: 0;
   display: grid;
   flex: 1;
-  grid-template-columns: clamp(220px, 22vw, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 32vw, 420px);
   min-height: 0;
   overflow: hidden;
 }
-.configurator-rail {
-  border-right: 1px solid var(--ink-14);
-  overflow-y: auto;
-  padding: var(--s-4);
-  background: var(--bg-sunken);
-}
-.configurator-main {
+.notion-layout-main {
   overflow-y: auto;
   padding: var(--s-5);
   display: flex;
   flex-direction: column;
+  gap: var(--s-5);
+}
+.notion-layout-aside {
+  overflow-y: auto;
+  padding: var(--s-5) var(--s-4);
+  border-left: 1px solid var(--ink-14);
+  background: var(--bg-sunken);
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
 }
-.configurator-link-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: var(--s-2);
-  margin-block: var(--s-2);
-}
-.configurator-link-row .field { min-width: 150px; flex: 1; }
 @media (max-width: 860px) {
   .settings-modal--workspace .settings-modal-body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
-  .configurator-rail {
-    border-right: none;
-    border-bottom: 1px solid var(--ink-14);
+  .notion-layout-aside {
+    border-left: none;
+    border-top: 1px solid var(--ink-14);
     max-height: 40vh;
   }
 }
-.configurator-section + .configurator-section { margin-top: var(--s-5); }
-.configurator-section h3 {
+.notion-layout-section { display: flex; flex-direction: column; gap: var(--s-3); }
+.notion-layout-section-header { display: flex; gap: var(--s-3); align-items: flex-start; }
+.notion-layout-section-header h3 { margin: 0; font-size: 1rem; }
+.notion-layout-section-header p { margin: var(--s-1) 0 0; }
+.notion-layout-step {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-06);
+  color: var(--accent);
+  font-weight: 600;
+}
+.notion-layout-chips, .notion-layout-cards { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.notion-layout-chip, .notion-layout-card {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--ink-14);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.notion-layout-cards { flex-direction: column; flex-wrap: nowrap; }
+.notion-layout-card small { color: var(--ink-55); margin-left: auto; }
+.notion-layout-chip.is-disabled { opacity: .55; cursor: not-allowed; }
+.notion-layout-values { width: 100%; border-collapse: collapse; }
+.notion-layout-values th, .notion-layout-values td {
+  padding: var(--s-2);
+  border-bottom: 1px solid var(--ink-12);
+  text-align: left;
+}
+.notion-layout-values td { width: 1%; white-space: nowrap; text-align: center; }
+.notion-layout-values thead th:not(:first-child) { text-align: center; white-space: nowrap; }
+.notion-layout-add select { max-width: 420px; }
+.notion-layout-missing { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.notion-layout-missing .field { min-width: 160px; }
+.notion-layout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-top: auto;
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--ink-14);
+}
+.notion-layout-actions-group, .notion-layout-aside-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.notion-layout-import { cursor: pointer; }
+.notion-layout-aside-title {
+  margin: 0;
   font-size: var(--size-small);
   text-transform: uppercase;
   letter-spacing: .04em;
   color: var(--ink-60);
-  margin-bottom: var(--s-3);
 }
-.configurator-presets { display: flex; flex-direction: column; gap: var(--s-2); }
-.configurator-presets .btn-secondary.is-active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.configurator-target-list { list-style: none; padding: 0; margin: 0 0 var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
-.configurator-target-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
+.notion-tree, .notion-tree ul { list-style: none; margin: 0; padding: 0; }
+.notion-tree ul { margin-left: var(--s-3); padding-left: var(--s-3); border-left: 1px solid var(--ink-14); }
+.notion-tree-node { padding: var(--s-1) 0; }
+.notion-tree-label { display: inline-flex; align-items: center; gap: var(--s-1); font-weight: 600; }
+.notion-tree-columns { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 0 var(--s-4); }
+.notion-tree-columns span {
+  padding: 1px var(--s-2);
   border-radius: var(--r-md);
+  background: var(--ink-08);
+  font-size: .75rem;
+  color: var(--ink-70);
+}
+.notion-tree-note { display: block; margin-left: var(--s-4); color: var(--ink-55); }
+.notion-layout-check {
+  padding: var(--s-3);
   border: 1px solid var(--ink-14);
-  cursor: pointer;
-}
-.configurator-target-row.is-active { border-color: var(--accent); background: var(--accent-06); }
-.configurator-target-row small { display: block; color: var(--ink-60); }
-.configurator-tree { list-style: none; padding: 0; margin: 0 0 var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
-.configurator-tree .btn-secondary { width: 100%; justify-content: flex-start; }
-.configurator-target-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--s-4);
-  margin-bottom: var(--s-4);
-}
-.configurator-columns { width: 100%; border-collapse: collapse; margin-bottom: var(--s-4); }
-.configurator-columns th, .configurator-columns td { padding: var(--s-2); border-bottom: 1px solid var(--ink-12); text-align: left; }
-.configurator-columns input, .configurator-columns select { width: 100%; }
-.configurator-preview-controls { display: flex; gap: var(--s-3); margin-bottom: var(--s-3); }
-.configurator-preview-controls input { flex: 1; }
-.configurator-preview-target { margin-top: var(--s-3); }
-.icon-button {
-  background: none;
-  border: none;
-  color: var(--ink-60);
-  cursor: pointer;
-  padding: var(--s-1);
-}
-.icon-button:hover { color: var(--neg); }
-
-/* The export mapping's node graph (notion_upload/ui/node-canvas.js): a
-   small purpose-made pan/zoom/wire canvas, not a vendored dependency. */
-.configurator-node-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s-2);
-  margin-bottom: var(--s-3);
-}
-.configurator-node-container {
-  position: relative;
-  height: 480px;
-  border: 1px solid var(--ink-14);
-  border-radius: var(--r-lg);
-  background: var(--bg-sunken);
-  overflow: hidden;
-  touch-action: none;
-}
-.node-canvas { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: grab; }
-.node-canvas-world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
-.node-canvas-wires { position: absolute; top: 0; left: 0; width: 4000px; height: 4000px; overflow: visible; pointer-events: none; }
-.node-canvas-wire { fill: none; stroke: var(--ink-30); stroke-width: 2; pointer-events: stroke; cursor: pointer; }
-.node-canvas-wire.is-selected { stroke: var(--accent); stroke-width: 3; }
-.node-canvas-wire--preview { stroke: var(--accent); stroke-dasharray: 4 4; }
-.node-canvas-nodes { position: absolute; top: 0; left: 0; }
-.node-canvas-node {
-  position: absolute;
-  min-width: 170px;
+  border-radius: var(--r-md);
   background: var(--bg-elevated);
-  border: 1px solid var(--ink-14);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-sm, 0 1px 4px rgba(0,0,0,.1));
-  font-size: var(--size-small);
-  cursor: grab;
-  user-select: none;
 }
-.node-canvas-node.is-selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-16); }
-.node-canvas-node-header {
-  padding: var(--s-2) var(--s-3);
-  font-weight: 600;
+.notion-layout-check.is-error { border-left: 4px solid var(--neg); }
+.notion-layout-check p { margin: 0 0 var(--s-2); }
+.notion-layout-check ul { margin: 0 0 var(--s-2); padding-left: var(--s-4); }
+.notion-layout-preview { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.notion-layout-preview th, .notion-layout-preview td {
+  padding: var(--s-1) var(--s-2);
   border-bottom: 1px solid var(--ink-12);
-}
-.node-canvas-node-detail {
-  padding: var(--s-1) var(--s-3) 0;
-  color: var(--ink-60);
-  word-break: break-word;
-}
-.node-canvas-node-ports { display: flex; justify-content: space-between; gap: var(--s-3); padding: var(--s-2) 0; }
-.node-canvas-port-column { display: flex; flex-direction: column; gap: var(--s-2); }
-.node-canvas-port-column--outputs { align-items: flex-end; text-align: right; }
-.node-canvas-port-row { display: flex; align-items: center; gap: var(--s-1); padding: 0 var(--s-2); color: var(--ink-70); }
-.node-canvas-port {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--port-color, var(--ink-55));
-  border: 2px solid var(--bg-elevated);
-  cursor: crosshair;
-  flex: none;
+  text-align: left;
+  vertical-align: top;
 }
 .plugin-console-guided,
 .plugin-console-expert {
@@ -3686,6 +3659,28 @@ body.admin::before { display: none; }
 .progress-rail-hint {
   font-size: .75rem;
   color: var(--ink-55);
+}
+
+/* "Upload again" under a finished upload step. */
+.progress-rail-again {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  padding: 2px var(--s-2);
+  border: 1px solid var(--ink-14);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-55);
+  font: inherit;
+  font-size: .75rem;
+  cursor: pointer;
+}
+
+.progress-rail-again:hover,
+.progress-rail-again:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .progress-rail-problems {

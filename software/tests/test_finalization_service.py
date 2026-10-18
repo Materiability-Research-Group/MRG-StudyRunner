@@ -940,5 +940,70 @@ class FinalizationServiceTests(unittest.TestCase):
             self.assertFalse(entry["local_present"])
 
 
+    def test_republish_uploads_one_finished_destination_again(self) -> None:
+        """'Upload again' re-runs only that destination of a completed session."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = RecordingDestinationHandler()
+            service = self._service(Path(temp_dir), destination_handler=destination)
+            job = service.commit_submission(
+                SUBMISSION,
+                config_data={"study_settings": {"notion_enabled": True, "nextcloud_enabled": True}},
+                recording_expected=True,
+            )
+            service.process_due_jobs_once()
+            done = service.get(job["job_id"])
+            self.assertEqual(done["status"], "completed")
+            self.assertEqual(sorted(done["republishable_steps"]), ["publish_nextcloud", "publish_notion"])
+            purge_before = next(step for step in done["steps"] if step["key"] == "purge_local_sources")
+
+            again = service.republish(job["job_id"], step_key="publish_notion")
+            self.assertEqual(again["status"], "completed", "uploading again never reopens the session")
+            self.assertEqual(again["quality_status"], "valid")
+            steps = {step["key"]: step for step in again["steps"]}
+            self.assertEqual(steps["publish_notion"]["status"], "pending")
+            self.assertEqual(steps["publish_nextcloud"]["status"], "done")
+            self.assertEqual(service._jobs[job["job_id"]]["republish_counts"], {"notion": 1})
+
+            service.process_due_jobs_once()
+            finished = service.get(job["job_id"])
+            self.assertEqual(destination.calls.count("notion"), 2)
+            self.assertEqual(destination.calls.count("nextcloud"), 1)
+            self.assertEqual(next(s for s in finished["steps"] if s["key"] == "publish_notion")["status"], "done")
+            self.assertEqual(next(s for s in finished["steps"] if s["key"] == "purge_local_sources"), purge_before)
+
+            service.republish(job["job_id"], step_key="publish_notion")
+            self.assertEqual(service._jobs[job["job_id"]]["republish_counts"], {"notion": 2})
+
+    def test_republish_refuses_anything_but_a_finished_upload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            destination = FailedPersistentDestinationHandler()
+            service = self._service(Path(temp_dir), destination_handler=destination)
+            job = service.commit_submission(
+                SUBMISSION,
+                config_data={"study_settings": {"notion_enabled": True, "nextcloud_enabled": True}},
+                recording_expected=True,
+            )
+            service.process_due_jobs_once()
+            self.assertEqual(service.get(job["job_id"])["republishable_steps"], ["publish_nextcloud"])
+            with self.assertRaises(InvalidTransitionError):
+                service.republish(job["job_id"], step_key="publish_notion")  # failed: use retry
+            with self.assertRaises(InvalidTransitionError):
+                service.republish(job["job_id"], step_key="export_csv")
+            with self.assertRaises(InvalidTransitionError):
+                service.republish(job["job_id"], step_key="")
+
+            state = service._jobs[job["job_id"]]
+            state["status"] = "attention_required"
+            self.assertEqual(service.public_job(state)["republishable_steps"], [])
+            with self.assertRaises(InvalidTransitionError):
+                service.republish(job["job_id"], step_key="publish_nextcloud")
+            state["status"] = "completed"
+
+            # A withdrawal deletes the session tree the upload is built from.
+            (Path(temp_dir) / state["session_path"] / "meta" / ".submission-commit.json").unlink()
+            with self.assertRaises(InvalidTransitionError):
+                service.republish(job["job_id"], step_key="publish_nextcloud")
+
+
 if __name__ == "__main__":
     unittest.main()

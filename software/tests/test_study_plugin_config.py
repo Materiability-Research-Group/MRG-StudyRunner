@@ -374,6 +374,35 @@ class ResetStaleUploadDiscoveriesTests(unittest.TestCase):
 
         self.assertEqual(reset["plugins"]["notion"]["settings"]["database_id"], "db-a")
 
+    def test_declared_target_settings_limit_what_moves_the_target(self) -> None:
+        manifests = {"fixture": {
+            "capability_config": {"upload_destination": {
+                "discovered_settings": ["database_id"],
+                "target_settings": ["parent_page_id"],
+            }},
+            "study_settings_schema": {
+                "parent_page_id": {"type": "string"},
+                "database_id": {"type": "string"},
+                "layout": {"type": "object"},
+            },
+        }}
+
+        def plugins(**settings):
+            return {"plugins": {"fixture": {"enabled": True, "settings": settings}}}
+
+        layout_only = reset_stale_upload_discoveries(
+            plugins(parent_page_id="a", database_id="db", layout={"x": 1}),
+            plugins(parent_page_id="a", database_id="db", layout={"x": 2}),
+            manifests=manifests,
+        )
+        self.assertEqual(layout_only["plugins"]["fixture"]["settings"]["database_id"], "db")
+        moved = reset_stale_upload_discoveries(
+            plugins(parent_page_id="a", database_id="db"),
+            plugins(parent_page_id="b", database_id="db"),
+            manifests=manifests,
+        )
+        self.assertEqual(moved["plugins"]["fixture"]["settings"]["database_id"], "")
+
     def test_a_newly_added_plugin_selection_is_left_alone(self) -> None:
         next_settings = _notion_plugins(parent_page_id="page-a", database_id="")
         reset = reset_stale_upload_discoveries(None, next_settings)

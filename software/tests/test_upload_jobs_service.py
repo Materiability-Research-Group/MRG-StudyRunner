@@ -322,6 +322,38 @@ class UploadJobServiceTests(unittest.TestCase):
             self.assertNotIn("hardware_config", response)
 
 
+    def test_get_job_finds_jobs_older_than_the_status_window(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            clock = ManualClock()
+            service = UploadJobService(Path(temp_dir), clock=clock)
+            service.enqueue(**job_arguments(), job_id="old-job")
+            clock.value += 200 * 24 * 60 * 60
+            self.assertEqual(service.status(days=90)["sessions"], [])
+            self.assertEqual(service.get_job("old-job")["job_id"], "old-job")
+            self.assertIsNone(service.get_job("missing"))
+
+    def test_enqueue_with_current_target_reaches_the_executor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            seen = []
+            service = UploadJobService(Path(temp_dir), executors={"fixture": lambda payload: seen.append(payload.get("_retry_target")) or {"ok": True}})
+            arguments = {**job_arguments(), "kind": "fixture"}
+            service.enqueue(**arguments, job_id="again-r1", retry_target="current")
+            service.process_due_jobs_once()
+            self.assertEqual(seen, ["current"])
+            with self.assertRaises(UploadJobError):
+                service.enqueue(**arguments, job_id="bad-target", retry_target="elsewhere")
+
+    def test_describe_retry_target_uses_the_fallback_after_the_payload_is_gone(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            seen = []
+            service = UploadJobService(Path(temp_dir), executors={"fixture": lambda _payload: {"ok": True}})
+            service.register_retry_target_describer("fixture", lambda _job, payload: seen.append(payload) or {"differs": False, "fields": []})
+            service.enqueue(**{**job_arguments(), "kind": "fixture"}, job_id="done-job")
+            service.process_due_jobs_once()
+            service.describe_retry_target("done-job", fallback_payload={"config_data": {"study_id": "s"}})
+            self.assertEqual(seen, [{"config_data": {"study_id": "s"}}])
+
+
 class FolderOpenServiceTests(unittest.TestCase):
     def test_session_folder_resolution_requires_exact_canonical_layout(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

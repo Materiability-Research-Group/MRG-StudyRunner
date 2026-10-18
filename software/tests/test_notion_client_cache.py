@@ -121,9 +121,8 @@ class NotionClientCacheTests(unittest.TestCase):
 
         result = adapter.upload_study_result(
             result_payload={"participant_id": "p01"},
-            hardware_config={},
             saved_output={},
-            config_data={"study_settings": {"notion_enabled": True}},
+            config_data={"study_settings": {"plugins": {"notion": {"enabled": True, "settings": {}}}}},
         )
 
         self.assertFalse(result["ok"])
@@ -135,9 +134,8 @@ class NotionClientCacheTests(unittest.TestCase):
 
         result = adapter.upload_study_result(
             result_payload={"participant_id": "p01"},
-            hardware_config={},
             saved_output={},
-            config_data={"study_settings": {"notion_enabled": False}},
+            config_data={"study_settings": {"plugins": {"notion": {"enabled": False, "settings": {}}}}},
         )
 
         self.assertTrue(result["skipped"])

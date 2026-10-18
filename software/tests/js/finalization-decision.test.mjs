@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { renderOperatorDecision } from '../../study_runner/apps/ui/scripts/admin/session-progress-rail.js';
+import { renderOperatorDecision, renderStep } from '../../study_runner/apps/ui/scripts/admin/session-progress-rail.js';
 
 test('only quality warnings offer to continue processing with a reason', () => {
   const html = renderOperatorDecision({
@@ -44,4 +44,12 @@ test('finished sessions offer no decision', () => {
   assert.equal(renderOperatorDecision({ status: 'completed' }), '');
   assert.equal(renderOperatorDecision({ status: 'completed_degraded', can_continue_processing: false }), '');
   assert.equal(renderOperatorDecision(null), '');
+});
+
+test('a finished upload offers to upload again, other steps do not', () => {
+  const upload = renderStep({ key: 'publish_notion', label: 'Notion', status: 'done', republishable: true });
+  assert.match(upload, /data-republish-step="publish_notion"/);
+  assert.match(upload, /Upload again/);
+  const merge = renderStep({ key: 'merge_xdf', label: 'Merge', status: 'done', republishable: false });
+  assert.doesNotMatch(merge, /data-republish-step/);
 });

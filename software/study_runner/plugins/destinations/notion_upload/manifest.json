@@ -1,7 +1,7 @@
 {
   "api_version": 5,
   "plugin_key": "notion",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "category": "storage",
   "config_key": "notion",
   "runtime": {
@@ -27,7 +27,7 @@
   },
   "ui": {
     "label": "Notion upload",
-    "description": "Publishes finalized result and card-summary JSON to Notion.",
+    "description": "Publishes finished sessions to Notion: a participants table, optionally each participant's answers and one comparison table per card.",
     "help_key": "pluginHelp.notion.intro",
     "order": 600,
     "visibility": {
@@ -40,10 +40,9 @@
       "study_settings": "ui/configurator.js"
     },
     "assets": [
-      "ui/configurator-node-view.js",
-      "ui/node-canvas.js",
-      "ui/configurator-target-links.js",
-      "ui/configurator-transfer.js"
+      "ui/layout-model.js",
+      "ui/layout-sections.js",
+      "ui/layout-tree-preview.js"
     ]
   },
   "capabilities": {
@@ -57,7 +56,10 @@
       "discovered_settings": [
         "database_id",
         "data_source_id",
-        "sessions_database_id"
+        "comparison_page_id"
+      ],
+      "target_settings": [
+        "parent_page_id"
       ],
       "legacy": {
         "enabled_field": "notion_enabled",
@@ -122,87 +124,88 @@
           }
         },
         {
-          "key": "list_children",
+          "key": "describe_layout_sources",
           "surface": "configurator",
-          "label": "List page children",
+          "label": "List the cards and values of this study",
           "payload_schema": {
-            "api_key": { "type": "string", "required": false, "max_length": 256 },
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "page_id": { "type": "string", "required": true, "max_length": 256 },
-            "cursor": { "type": "string", "required": false, "max_length": 512 }
+            "study_id": {
+              "type": "string",
+              "required": false,
+              "max_length": 256
+            },
+            "config_data_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 200000
+            },
+            "session_path": {
+              "type": "string",
+              "required": false,
+              "max_length": 512
+            }
           }
         },
         {
-          "key": "describe_database",
+          "key": "check_structure",
           "surface": "configurator",
-          "label": "Describe a database",
+          "label": "Check or create the Notion tables",
           "payload_schema": {
-            "api_key": { "type": "string", "required": false, "max_length": 256 },
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "database_id": { "type": "string", "required": true, "max_length": 256 }
+            "api_key": {
+              "type": "string",
+              "required": false,
+              "max_length": 256
+            },
+            "study_id": {
+              "type": "string",
+              "required": false,
+              "max_length": 256
+            },
+            "layout_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 50000
+            },
+            "config_data_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 200000
+            },
+            "settings_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 4096
+            },
+            "apply": {
+              "type": "boolean",
+              "required": true
+            }
           }
         },
         {
-          "key": "create_database",
-          "surface": "configurator",
-          "label": "Create a database",
-          "payload_schema": {
-            "api_key": { "type": "string", "required": false, "max_length": 256 },
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "parent_page_id": { "type": "string", "required": true, "max_length": 256 },
-            "title": { "type": "string", "required": true, "max_length": 200 },
-            "row_level": { "type": "string", "required": true, "enum": ["session", "participant", "card"] },
-            "columns_json": { "type": "string", "required": true, "max_length": 20000 },
-            "key_column": { "type": "string", "required": false, "max_length": 100 }
-          }
-        },
-        {
-          "key": "describe_output_catalog",
-          "surface": "configurator",
-          "label": "List fixed output sources for this study",
-          "payload_schema": {
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "config_data_json": { "type": "string", "required": true, "max_length": 200000 }
-          }
-        },
-        {
-          "key": "describe_session_sources",
-          "surface": "configurator",
-          "label": "List sources available from a session",
-          "payload_schema": {
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "session_path": { "type": "string", "required": true, "max_length": 512 }
-          }
-        },
-        {
-          "key": "check_mapping",
-          "surface": "configurator",
-          "label": "Check mapping without a session",
-          "payload_schema": {
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "mapping_json": { "type": "string", "required": true, "max_length": 200000 },
-            "config_data_json": { "type": "string", "required": true, "max_length": 200000 }
-          }
-        },
-        {
-          "key": "prepare_schema",
-          "surface": "configurator",
-          "label": "Prepare mapped Notion columns",
-          "payload_schema": {
-            "api_key": { "type": "string", "required": false, "max_length": 256 },
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "mapping_json": { "type": "string", "required": true, "max_length": 200000 },
-            "apply": { "type": "boolean", "required": true }
-          }
-        },
-        {
-          "key": "preview_mapping",
+          "key": "preview_layout",
           "surface": "configurator",
           "label": "Preview with a session",
           "payload_schema": {
-            "study_id": { "type": "string", "required": false, "max_length": 256 },
-            "mapping_json": { "type": "string", "required": true, "max_length": 200000 },
-            "session_path": { "type": "string", "required": true, "max_length": 512 }
+            "study_id": {
+              "type": "string",
+              "required": false,
+              "max_length": 256
+            },
+            "layout_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 50000
+            },
+            "config_data_json": {
+              "type": "string",
+              "required": true,
+              "max_length": 200000
+            },
+            "session_path": {
+              "type": "string",
+              "required": true,
+              "max_length": 512
+            }
           }
         }
       ]
@@ -280,20 +283,20 @@
         "placeholder_key": "pluginSettings.notion.dataSourceId.placeholder",
         "help_key": "pluginHelp.notion.dataSourceId"
       },
-      "sessions_database_id": {
+      "comparison_page_id": {
         "type": "string",
         "default": "",
         "read_only": true,
-        "label_key": "pluginSettings.notion.sessionsDatabaseId.label",
+        "label_key": "pluginSettings.notion.comparisonPageId.label",
         "placeholder_key": "pluginSettings.notion.dataSourceId.placeholder",
-        "help_key": "pluginHelp.notion.sessionsDatabaseId"
+        "help_key": "pluginHelp.notion.comparisonPageId"
       },
-      "export_mapping": {
+      "notion_layout": {
         "type": "object",
         "default": {},
-        "max_length": 200000,
-        "label_key": "pluginSettings.notion.exportMapping.label",
-        "help_key": "pluginHelp.notion.exportMapping"
+        "max_length": 50000,
+        "label_key": "pluginSettings.notion.layout.label",
+        "help_key": "pluginHelp.notion.layout"
       }
     },
     "card_actions": {}

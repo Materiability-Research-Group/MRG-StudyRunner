@@ -292,7 +292,7 @@ class DestinationDiscoveryManifestTests(unittest.TestCase):
 
     def test_discovery_allowlist_is_explicit_and_validated(self) -> None:
         manifest = json.loads((PROJECT_ROOT / "study_runner/plugins/destinations/notion_upload/manifest.json").read_text())
-        self.assertEqual(normalize_manifest(manifest)["capability_config"]["upload_destination"]["discovered_settings"], ["database_id", "data_source_id", "sessions_database_id"])
+        self.assertEqual(normalize_manifest(manifest)["capability_config"]["upload_destination"]["discovered_settings"], ["database_id", "data_source_id", "comparison_page_id"])
         capability = manifest["capabilities"]["upload_destination"]
         for invalid in ("database_id", ["database_id", "database_id"], ["nested.field"], [42], [{}]):
             with self.subTest(invalid=invalid):
@@ -301,6 +301,17 @@ class DestinationDiscoveryManifestTests(unittest.TestCase):
                     normalize_manifest(manifest)
         capability.pop("discovered_settings")
         self.assertEqual(normalize_manifest(manifest)["capability_config"]["upload_destination"]["discovered_settings"], [])
+
+    def test_target_settings_must_name_hand_entered_study_fields(self) -> None:
+        manifest = json.loads((PROJECT_ROOT / "study_runner/plugins/destinations/notion_upload/manifest.json").read_text())
+        capability = manifest["capabilities"]["upload_destination"]
+        capability["target_settings"] = ["parent_page_id"]
+        self.assertEqual(normalize_manifest(manifest)["capability_config"]["upload_destination"]["target_settings"], ["parent_page_id"])
+        for invalid in ("parent_page_id", ["database_id"], ["no_such_field"], ["parent_page_id", "parent_page_id"]):
+            with self.subTest(invalid=invalid):
+                capability["target_settings"] = invalid
+                with self.assertRaises(PluginManifestError):
+                    normalize_manifest(manifest)
 
 
 if __name__ == "__main__":

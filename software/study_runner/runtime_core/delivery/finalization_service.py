@@ -187,126 +187,6 @@ class NullRecordingFinalizationAdapter:
         return self._result(context)
 
 
-class UploadJobDestinationHandler:
-    """Bridge finalization destinations to the existing persistent upload queue."""
-
-    def __init__(self, service: Any, data_dir: Path) -> None:
-        self.service = service
-        self.data_dir = Path(data_dir).resolve()
-
-    def publish(self, destination: str, context: FinalizationContext) -> StepResult:
-        job_id = _destination_job_id(
-            context.state["job_id"],
-            destination,
-            int(context.state.get("publication_generation") or 1),
-        )
-        existing = self._find_job(job_id)
-        if existing is None:
-            payload = self._payload(context)
-            existing = self.service.enqueue(
-                kind=destination,
-                study_id=context.state["study_id"],
-                participant_id=context.state["participant_id"],
-                session_id=context.state["session_id"],
-                label=destination.title(),
-                payload=payload,
-                metadata={
-                    "finalization_job_id": context.state["job_id"],
-                    "session_folder": context.paths.root.name,
-                },
-                job_id=job_id,
-            )
-        status = str(existing.get("status") or "")
-        if status == "done":
-            upload_result = existing.get("result") or {}
-            details = {"upload_job_id": job_id, "result": upload_result}
-            if isinstance(upload_result.get("remote_sha256"), dict):
-                details["remote_sha256"] = dict(upload_result["remote_sha256"])
-            return StepResult("done", details)
-        if status == "failed":
-            raise FinalizationError(str(existing.get("last_error") or f"{destination} upload failed."))
-        # Wait for the upload queue's own next attempt instead of polling every
-        # second, and show why the previous attempt failed.
-        last_error = str(existing.get("last_error") or "").strip()
-        message = f"{destination} upload is {status or 'queued'}"
-        if last_error:
-            message += f"; last attempt: {last_error}"
-        raise DeferredStep(message + ".", retry_after_seconds=_seconds_until(existing.get("next_attempt_at")))
-
-    def retry(self, destination: str, context: FinalizationContext, *, target: str = "snapshot") -> None:
-        """Retry the deterministic upload job behind a finalization step.
-
-        Resetting only the outer state-machine step would immediately find the
-        same failed upload job again. The two journals therefore transition
-        together while keeping the stable destination job id.
-        """
-
-        job_id = _destination_job_id(
-            context.state["job_id"],
-            destination,
-            int(context.state.get("publication_generation") or 1),
-        )
-        existing = self._find_job(job_id)
-        if existing is None:
-            return
-        status = str(existing.get("status") or "")
-        if status in {"done", "running"}:
-            return
-        try:
-            self.service.retry(job_id=job_id, kind=destination, target=target)
-        except Exception as error:
-            raise FinalizationError(
-                f"Could not retry the persistent {destination} upload: {error}"
-            ) from error
-
-    def describe_retry_target(self, destination: str, context: FinalizationContext) -> dict[str, Any]:
-        job_id = _destination_job_id(
-            context.state["job_id"],
-            destination,
-            int(context.state.get("publication_generation") or 1),
-        )
-        if self._find_job(job_id) is None:
-            return {"differs": False, "fields": []}
-        return self.service.describe_retry_target(job_id)
-
-    def _find_job(self, job_id: str) -> dict[str, Any] | None:
-        status = self.service.status(days=30)
-        for session in status.get("sessions", []):
-            for job in session.get("jobs", []):
-                if job.get("job_id") == job_id:
-                    return job
-        return None
-
-    def _payload(self, context: FinalizationContext) -> dict[str, Any]:
-        result_path = context.paths.result_file
-        result_payload = _read_json_object(result_path) if result_path.is_file() else dict(context.submission)
-        relative_root = context.paths.root.relative_to(self.data_dir).as_posix()
-        saved_output = {
-            "participant_dir": relative_root,
-            "session_dir": relative_root,
-            "session_relative_path": relative_root,
-            "json_file": f"{relative_root}/answers/result.json",
-            "card_summary_file": f"{relative_root}/answers/card-summary.json",
-            "manifest_file": f"{relative_root}/meta/manifest.json",
-            "xdf_file": (
-                f"{relative_root}/derived/session.xdf"
-                if context.paths.merged_xdf.is_file()
-                else None
-            ),
-            "card_summary": (
-                _read_json_object(context.paths.card_summary_file)
-                if context.paths.card_summary_file.is_file()
-                else {}
-            ),
-        }
-        return {
-            "result_payload": result_payload,
-            "hardware_config": context.hardware_config,
-            "saved_output": saved_output,
-            "config_data": context.config_data,
-        }
-
-
 class FinalizationService:
     """Persistent state machine with replay, retry, and degraded confirmation."""
 
@@ -629,6 +509,35 @@ class FinalizationService:
         self._wake.set()
         return self.public_job(state)
 
+    def republish(self, job_id: str, *, step_key: str) -> dict[str, Any]:
+        """Upload a finished session to one destination again.
+
+        For a session whose upload already succeeded, e.g. after the
+        destination's layout changed. The destination gets a fresh upload
+        job (see ``upload_job_destination_handler.upload_job_id``) that uses
+        the study's current settings; the destination plugin is expected to
+        update what it published before instead of duplicating it. Status,
+        quality, and every other step stay exactly as they are.
+        """
+        with self._lock:
+            state = self._require_state(job_id)
+            target = str(step_key or "").strip()
+            definition = self._destination_by_step(state, target)
+            if definition is None:
+                raise InvalidTransitionError("Only an upload step can be uploaded again.")
+            if target not in _republishable_steps(state, self._destination_step_keys(state)):
+                raise InvalidTransitionError("Only a finished upload of a completed session can be uploaded again.")
+            # A withdrawal deletes the session tree (leaving only a
+            # tombstone), and with it the commit an upload is built from.
+            if not (self.data_dir / state["session_path"] / "meta" / ".submission-commit.json").is_file():
+                raise InvalidTransitionError("A withdrawn or deleted session cannot be uploaded again.")
+            counts = state.setdefault("republish_counts", {})
+            counts[definition.destination] = int(counts.get(definition.destination) or 0) + 1
+            self._reset_from(state, target)
+            self._persist_state(state, event={"event": "republish_requested", "step": target})
+        self._wake.set()
+        return self.public_job(state)
+
     def acknowledge_attention(self, job_id: str) -> dict[str, Any]:
         """Record that an operator has looked at this job.
 
@@ -852,6 +761,7 @@ class FinalizationService:
             state.get("status") == "attention_required"
             and isinstance(state.get("quality_acceptance"), Mapping)
         )
+        public["republishable_steps"] = _republishable_steps(state, self._destination_step_keys(state))
         unfinished = _first_unfinished_core_step(state)
         public["can_continue_processing"] = bool(
             state.get("status") == "completed_degraded"
@@ -1740,18 +1650,6 @@ class FinalizationService:
         return state
 
 
-def _seconds_until(iso_value: Any, *, minimum: float = 1.0, maximum: float = 300.0) -> float:
-    """Seconds until an ISO timestamp, clamped so a clock skew never stalls a step."""
-    try:
-        target = dt.datetime.fromisoformat(str(iso_value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return minimum
-    if target.tzinfo is None:
-        target = target.replace(tzinfo=dt.timezone.utc)
-    remaining = target.timestamp() - time.time()
-    return max(minimum, min(maximum, remaining))
-
-
 def _initial_steps(
     settings: Mapping[str, Any],
     destinations: tuple[DestinationPluginDefinition, ...],
@@ -1853,12 +1751,15 @@ def _submission_key(study_id: str, participant_id: str, submission_id: str) -> s
     return f"{study_id}\0{participant_id}\0{submission_id}"
 
 
-def _destination_job_id(
-    finalization_job_id: str,
-    destination: str,
-    publication_generation: int = 1,
-) -> str:
-    return f"{finalization_job_id}-g{max(1, int(publication_generation))}-{destination}"
+def _republishable_steps(state: Mapping[str, Any], destination_keys: tuple[str, ...]) -> list[str]:
+    """Finished upload steps of a completed session, which may be uploaded again."""
+    if state.get("status") not in {"completed", "completed_degraded"}:
+        return []
+    return [
+        step["key"]
+        for step in state.get("steps", [])
+        if step.get("key") in destination_keys and step.get("status") == "done"
+    ]
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:

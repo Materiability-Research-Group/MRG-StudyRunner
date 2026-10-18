@@ -1007,7 +1007,7 @@ class PublicCatalogTests(unittest.TestCase):
         app.register_blueprint(plugins_blueprint)
         client = app.test_client()
 
-        for asset in ("ui/configurator.js", "ui/configurator-node-view.js", "ui/node-canvas.js"):
+        for asset in ("ui/configurator.js", "ui/layout-model.js", "ui/layout-sections.js"):
             response = client.get(f"/api/plugins/notion/assets/{asset}")
             self.assertEqual(response.status_code, 200, asset)
             self.assertEqual(response.mimetype, "text/javascript", asset)

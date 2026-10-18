@@ -121,5 +121,29 @@ class FinalizationRoutesTests(unittest.TestCase):
             self.assertEqual(refused.status_code, 409)
 
 
+    def test_republish_route_reports_refusals(self) -> None:
+        from study_runner.runtime_core.delivery.finalization_service import InvalidTransitionError
+
+        calls = []
+
+        def republish(job_id, *, step_key):
+            calls.append((job_id, step_key))
+            if step_key != "publish_notion":
+                raise InvalidTransitionError("Only a finished upload of a completed session can be uploaded again.")
+            return {"job_id": job_id, "status": "completed"}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app = self._app(Path(temp_dir), {"job_id": "finalization-1", "status": "completed", "steps": []})
+            app.config["FINALIZATION_SERVICE"].republish = republish
+            client = app.test_client()
+            ok = client.post("/api/finalization/finalization-1/republish", json={"step": "publish_notion"})
+            refused = client.post("/api/finalization/finalization-1/republish", json={"step": "export_csv"})
+
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.get_json()["job"]["status"], "completed")
+        self.assertEqual(refused.status_code, 409)
+        self.assertEqual(calls, [("finalization-1", "publish_notion"), ("finalization-1", "export_csv")])
+
+
 if __name__ == "__main__":
     unittest.main()

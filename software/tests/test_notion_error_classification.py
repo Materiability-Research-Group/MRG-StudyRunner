@@ -30,11 +30,9 @@ class NotionErrorClassificationTests(unittest.TestCase):
         self.assertTrue(permanent)
 
     def test_missing_page_setting_is_permanent(self) -> None:
-        permanent, message = classify_notion_error(
-            RuntimeError("Notion parent_page_id is required in study_settings to auto-create a Notion database.")
-        )
+        permanent, message = classify_notion_error(ValueError("parent_page_id is required"))
         self.assertTrue(permanent)
-        self.assertIn("Parent Page ID", message)
+        self.assertIn("Notion page", message)
 
     def test_network_and_rate_limits_keep_retrying(self) -> None:
         for error in (OSError("connection interrupted"), FakeNotionError("rate_limited"), FakeNotionError("internal_server_error")):

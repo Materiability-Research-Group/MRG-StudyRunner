@@ -716,6 +716,7 @@ def _normalize_upload_destination(config: dict[str, Any]) -> dict[str, Any]:
         "republish_on_degraded",
         "purge_verified_sources",
         "discovered_settings",
+        "target_settings",
         "legacy",
     }
     unexpected = sorted(set(config) - allowed)
@@ -743,15 +744,22 @@ def _normalize_upload_destination(config: dict[str, Any]) -> dict[str, Any]:
         normalized[name] = value
 
     discovered = config.get("discovered_settings", [])
-    if (
-        not isinstance(discovered, list)
-        or any(not isinstance(name, str) or not _KEY_PATTERN.fullmatch(name) for name in discovered)
-        or len(set(discovered)) != len(discovered)
-    ):
-        raise PluginManifestError(
-            "upload_destination.discovered_settings must be a list of unique snake_case keys"
-        )
+    # Hand-entered settings that name *where* the data goes (a parent page):
+    # only a change to one of them makes the discovered settings stale.
+    # Without the list every hand-entered setting counts.
+    targets = config.get("target_settings", [])
+    for name, keys in (("discovered_settings", discovered), ("target_settings", targets)):
+        if (
+            not isinstance(keys, list)
+            or any(not isinstance(key, str) or not _KEY_PATTERN.fullmatch(key) for key in keys)
+            or len(set(keys)) != len(keys)
+        ):
+            raise PluginManifestError(f"upload_destination.{name} must be a list of unique snake_case keys")
+    if set(targets) & set(discovered):
+        raise PluginManifestError("upload_destination.target_settings must not name discovered settings")
     normalized["discovered_settings"] = list(discovered)
+    if targets:
+        normalized["target_settings"] = list(targets)
 
     legacy = config.get("legacy", {})
     if not isinstance(legacy, dict):
@@ -1399,6 +1407,9 @@ def _validate_capability_contracts(
             raise PluginManifestError(
                 "upload_destination.discovered_settings must name declared study string fields"
             )
+    for name in capabilities.get("upload_destination", {}).get("target_settings", []):
+        if name not in settings["study"]:
+            raise PluginManifestError("upload_destination.target_settings must name declared study fields")
     if "lsl_stream_provider" in capabilities and not streams:
         raise PluginManifestError("lsl_stream_provider requires at least one stream")
     if "recording_source" in capabilities and not streams:
