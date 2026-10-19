@@ -5,6 +5,8 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+## 1.7.24 - 2026-10-19
+
 ### Fixed
 
 - **Finished sessions marked "Aborted" by an update.** An in-app update aborted the last recorded session even when it had already ended, so a session that was submitted, finalized and uploaded showed "Aborted" for good. An update (and every other abort) now leaves a submitted session alone. Sessions already marked this way show their real state again: an abort written after the submission does not count. The marker file stays on disk.
