@@ -5,6 +5,8 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+## 1.7.22 - 2026-10-19
+
 ### Added
 
 - **Upload again.** In a session's "Completion & uploads" card, every finished upload step now offers "Upload again", for every destination plugin alike. It uploads that one session again with the study's current settings - for example after changing what the study sends to Notion - and leaves the session's status, quality and every other step as they are. A dialog names the destination settings that changed since the session ended. A withdrawn session cannot be uploaded again.
