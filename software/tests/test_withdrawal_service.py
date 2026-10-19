@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from study_runner.contracts.session_lifecycle import WITHDRAWN, WITHDRAWN_MARKER
+from study_runner.contracts.session_lifecycle import SEALED, WITHDRAWN, WITHDRAWN_MARKER
 from study_runner.runtime_core.delivery.upload_jobs_service import (
     UploadJobError,
     UploadJobService,
@@ -205,6 +205,24 @@ class AdminAbortTests(unittest.TestCase):
             # Refused before any step ran.
             self.assertIsNone(service.load_state(SESSION_ID))
 
+    def test_a_session_that_was_already_submitted_is_not_marked_aborted(self) -> None:
+        """An update after the session ended used to tombstone it anyway."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            session = data_dir / "sessions" / SESSION_ID
+            _populate_session(session)
+            (session / "meta").mkdir()
+            (session / "meta" / ".submission-commit.json").write_text("{}", encoding="utf-8")
+            stopped_for: list[str] = []
+            service = WithdrawalService(data_dir, recording_stopper=stopped_for.append)
+
+            state = service.abort(session_id=SESSION_ID, session_root=session, reason="Software update")
+
+            self.assertEqual(state["status"], "already_submitted")
+            self.assertFalse((session / WITHDRAWN_MARKER).exists())
+            self.assertEqual(stopped_for, [])
+            self.assertIsNone(service.load_state(SESSION_ID))
+
     def test_abort_never_touches_uploads_or_journals(self) -> None:
         """Only stop_recording and write_tombstone run -- nothing else."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -368,6 +386,39 @@ class WithdrawnSessionVisibilityTests(unittest.TestCase):
             self.assertEqual(summary["withdrawal_kind"], "admin_abort")
             # The point of an abort: the recording's files are still there.
             self.assertTrue((session / "result.json").is_file())
+
+    def _finalized_then_aborted(self, data_dir: Path, *, submitted: float, aborted: float) -> Path:
+        session = data_dir / "study-a" / "p1" / SESSION_ID
+        _populate_session(session)
+        (session / "meta").mkdir()
+        (session / "meta" / "finalization-state.json").write_text(
+            json.dumps({"status": "completed", "created_epoch": submitted}), encoding="utf-8",
+        )
+        WithdrawalService(data_dir, clock=lambda: aborted).abort(
+            session_id=SESSION_ID, session_root=session, reason="Software update",
+        )
+        return session
+
+    def test_an_abort_written_after_the_submission_does_not_count(self) -> None:
+        """Repairs the tombstones in-app updates wrote onto finished sessions."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            session = self._finalized_then_aborted(data_dir, submitted=100.0, aborted=200.0)
+            self.assertTrue((session / WITHDRAWN_MARKER).is_file())
+
+            summary = list_sessions(data_dir)[0]
+            self.assertEqual(summary["lifecycle"], SEALED)
+            self.assertEqual(summary["withdrawal_kind"], "")
+            self.assertEqual(summary["status"], "completed")
+
+    def test_an_abort_before_the_submission_still_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            self._finalized_then_aborted(data_dir, submitted=300.0, aborted=200.0)
+
+            summary = list_sessions(data_dir)[0]
+            self.assertEqual(summary["lifecycle"], WITHDRAWN)
+            self.assertEqual(summary["withdrawal_kind"], "admin_abort")
 
     def test_a_session_with_no_completion_marker_becomes_visible_once_aborted(self) -> None:
         """The actual gap this exists to close: a live session, never

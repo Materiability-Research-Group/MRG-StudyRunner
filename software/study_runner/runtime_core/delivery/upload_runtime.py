@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from study_runner.contracts.card_ids import with_card_ids
 from study_runner.contracts.plugin_api import Plugin
 from study_runner.plugin_framework.registry import (
     build_context,
@@ -177,6 +178,11 @@ def _plugin_executor(
             # Falling back to the frozen snapshot is the only upload that is
             # still possible; the operator already saw this in the retry
             # comparison before choosing to retry.
+        # A session recorded before card ids existed carries an id-less copy
+        # of its study; give it the ids the saved study has, so its cards land
+        # in the same place as every later session's.
+        if isinstance(payload.get("config_data"), dict):
+            payload["config_data"] = with_card_ids(payload["config_data"])
 
         handler = plugin.publish_destination
         if handler is None:

@@ -362,7 +362,7 @@ def _session_summary(
             recording_plan=_optional_json(session_root / "meta" / "recording-plan.json"),
             finalization_state=finalization_state,
             terminal_marker=marker,
-            withdrawn=(session_root / WITHDRAWN_MARKER).is_file(),
+            withdrawn=_applicable_withdrawal(session_root) is not None,
         ),
         "answers_count": (
             len(answers)
@@ -533,11 +533,32 @@ def _has_final_marker(session_root: Path) -> bool:
 
 
 def _marker_payload(session_root: Path) -> dict[str, Any]:
-    withdrawal = session_root / WITHDRAWN_MARKER
-    if withdrawal.is_file():
-        return _optional_json(withdrawal)
+    withdrawal = _applicable_withdrawal(session_root)
+    if withdrawal is not None:
+        return withdrawal
     attention = session_root / "ATTENTION_REQUIRED.json"
     return _optional_json(attention if attention.is_file() else session_root / "COMPLETE.json")
+
+
+def _applicable_withdrawal(session_root: Path) -> dict[str, Any] | None:
+    """The session's tombstone, unless it is an abort that came too late.
+
+    Up to 1.7.23 an in-app update aborted the last recorded session even
+    when it had already ended: the participant had submitted, finalization
+    had run, and only then was an ``admin_abort`` tombstone written. Such an
+    abort stopped nothing, so it does not make the session aborted. A
+    genuine abort comes before the submission (or there is none at all).
+    """
+    marker_path = session_root / WITHDRAWN_MARKER
+    if not marker_path.is_file():
+        return None
+    marker = _optional_json(marker_path)
+    if marker.get("kind") == "admin_abort":
+        submitted = _optional_json(session_root / "meta" / "finalization-state.json").get("created_epoch")
+        aborted = marker.get("withdrawn_at_epoch")
+        if all(isinstance(value, (int, float)) for value in (submitted, aborted)) and aborted > submitted:
+            return None
+    return marker
 
 
 def _withdrawal_kind(session_root: Path) -> str:
@@ -547,10 +568,10 @@ def _withdrawal_kind(session_root: Path) -> str:
     lacking a ``kind`` means only one thing: it predates the field, back
     when consent withdrawal was the only kind there was.
     """
-    marker_path = session_root / WITHDRAWN_MARKER
-    if not marker_path.is_file():
+    marker = _applicable_withdrawal(session_root)
+    if marker is None:
         return ""
-    return str(_optional_json(marker_path).get("kind") or "consent_withdrawal")
+    return str(marker.get("kind") or "consent_withdrawal")
 
 
 def _saved_at(session_root: Path, result_file: Path, payload: dict[str, Any]) -> str:

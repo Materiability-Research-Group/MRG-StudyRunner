@@ -25,6 +25,7 @@ from study_runner.runtime_core.studies.study_config_service import (
     StudyRevisionConflict, delete_study, load_config, load_study,
     save_active_study, study_config_revision, study_transaction_path,
 )
+from study_runner.contracts.card_ids import legacy_card_id
 from study_runner.contracts.plugin_api import Plugin
 from study_runner.contracts.manifest import PluginManifestError, validate_and_normalize_manifest
 
@@ -49,7 +50,7 @@ class FakeApp:
 def study(study_id: str = "Study A", parent: str = "parent-1") -> dict:
     return {
         "study_id": study_id,
-        "questions": [{"type": "text", "prompt": "Original scientific question"}],
+        "questions": [{"type": "text", "prompt": "Original scientific question", "card_id": "card-1"}],
         "study_settings": {"plugins": {"notion": {
             "enabled": True, "required": False,
             "settings": {"parent_page_id": parent},
@@ -271,6 +272,18 @@ class UploadTargetPersistenceTests(unittest.TestCase):
     def test_retry_target_describer_without_payload_reports_no_difference(self) -> None:
         # A done job's payload file is deleted; a comparison must not crash.
         self.assertEqual(self.describer()({"kind": "notion"}, None), {"differs": False, "fields": []})
+
+    def test_a_study_copy_without_card_ids_gets_the_saved_studys_ids(self) -> None:
+        legacy = deepcopy(self.queued)
+        del legacy["config_data"]["questions"][0]["card_id"]
+        legacy["config_data"]["questions"].append({"type": "text", "prompt": "Has an id", "card_id": "kept-id"})
+        publish = Mock(return_value={"ok": True})
+        self.executor(publish)(legacy)
+
+        questions = publish.call_args.args[1]["config_data"]["questions"]
+        self.assertEqual(questions[0]["card_id"], legacy_card_id("Study A", 0))
+        self.assertEqual(questions[1]["card_id"], "kept-id")
+        self.assertNotIn("card_id", legacy["config_data"]["questions"][0], "the queued payload is not changed")
 
     def test_current_target_replaces_the_frozen_selection_before_publishing(self) -> None:
         edited = study()

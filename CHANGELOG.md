@@ -5,6 +5,13 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Fixed
+
+- **Finished sessions marked "Aborted" by an update.** An in-app update aborted the last recorded session even when it had already ended, so a session that was submitted, finalized and uploaded showed "Aborted" for good. An update (and every other abort) now leaves a submitted session alone. Sessions already marked this way show their real state again: an abort written after the submission does not count. The marker file stays on disk.
+- **Sessions recorded before card ids existed (before 1.7.21) now reach the card tables.** Their study copy has no card ids, so "Upload again" wrote only the Participants row. The upload now gives those cards the ids the saved study has, for every destination, and "Upload again" fills the Notion card tables and answers tables for these sessions too.
+- **The progress rail no longer ends on a step that never runs.** "Release local source files" is shown only when an upload destination of the session can verify the source files. Today none can, so the files always stay on this computer and the step is hidden. When such a destination is retried, a release that was waiting for it is reopened.
+- Notion plugin 2.0.3 (README only).
+
 ## 1.7.23 - 2026-10-19
 
 ### Fixed

@@ -1,7 +1,12 @@
 const STEP_COMPLETE = new Set(['done', 'skipped']);
 
+/** The steps a UI shows: the server hides those that can never happen here. */
+export function visibleFinalizationSteps(job) {
+  return (Array.isArray(job?.steps) ? job.steps : []).filter((step) => !step?.hidden);
+}
+
 export function finalizationProgress(job) {
-  const steps = Array.isArray(job?.steps) ? job.steps : [];
+  const steps = visibleFinalizationSteps(job);
   const total = steps.length;
   const done = steps.filter((step) => STEP_COMPLETE.has(step?.status)).length;
   return {

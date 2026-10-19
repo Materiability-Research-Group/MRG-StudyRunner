@@ -50,6 +50,7 @@ Edit-safety legend:
 | `software/study_runner/contracts/card_validation_primitives.py` | `CardValidationError` and the small `_normalize_*`/`_require_*` input primitives every card plugin's driver imports; card semantics themselves live in the plugins, not here | no |
 | `software/study_runner/contracts/media_content.py` | Shared field rules (title, formatted text, image id, layout) for read-only participant content: the info card and the study cover page | no |
 | `software/study_runner/contracts/card_options.py` | Shared options-list normalization for choice/single/ranking cards | no |
+| `software/study_runner/contracts/card_ids.py` | The stable card id, including the deterministic id of a card saved before card ids existed; study validation and every upload use it | no |
 
 ## Apps server - HTTP routes (`software/study_runner/apps/server/routes/`)
 

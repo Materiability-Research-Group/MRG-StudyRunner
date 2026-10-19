@@ -18,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from study_runner.contracts.card_ids import with_card_ids
 from study_runner.plugins.destinations.notion_upload import adapter, notion_api
 from study_runner.plugins.destinations.notion_upload.notion_api import NotionApi
 from study_runner.runtime_core.studies.validation import validate_and_normalize_config
@@ -195,6 +196,27 @@ class NotionPublishTests(unittest.TestCase):
             first = next(row for row in self.notion.rows(database) if "Verbal feedback" in row["properties"])
             self.assertEqual(first["properties"]["Verbal feedback"], feedback)
         self.assertEqual(len(self.notion.rows(self.participants())), 1)
+
+    def test_a_session_recorded_before_card_ids_fills_the_same_card_tables(self) -> None:
+        """Its study copy has no card ids; the upload gives it the saved study's."""
+        self.upload(session(self.config))
+        databases_before = len(self.notion.database_store)
+
+        legacy_config = deepcopy(self.config)
+        for question in legacy_config["questions"]:
+            del question["card_id"]
+        legacy = session(self.config, session_id="session-old", participant_id="p02")
+        for detail in legacy["answer_details"]:
+            del detail["card_id"]
+            detail["question_prompt"] = self.config["questions"][detail["question_index"]]["prompt"]
+        with patch.object(self, "config", with_card_ids(legacy_config)):
+            self.assertTrue(self.upload(legacy)["ok"])
+
+        self.assertEqual(len(self.notion.database_store), databases_before + 1, "only p02's answers table is new")
+        slider = self.notion.rows(self.comparison_db("02 ·"))
+        self.assertEqual(sorted(plain(row["properties"]["Participant ID"]) for row in slider), ["p01", "p02"])
+        old = next(row for row in slider if plain(row["properties"]["Participant ID"]) == "p02")
+        self.assertEqual(old["properties"]["Answer"], {"number": 72.0})
 
     def test_lost_ids_find_the_same_tables_again(self) -> None:
         self.upload(session(self.config))

@@ -10,7 +10,11 @@
  */
 import { t } from '../shared/i18n.js';
 import { escapeHtml, formatDateTime } from '../shared/dom-utils.js';
-import { distinctFinalizationWarnings, finalizationStepLabel } from '../shared/finalization-view-model.js';
+import {
+  distinctFinalizationWarnings,
+  finalizationStepLabel,
+  visibleFinalizationSteps,
+} from '../shared/finalization-view-model.js';
 
 const STEP_ICONS = {
   done: 'iconoir-check-circle',
@@ -42,7 +46,7 @@ export function renderSessionProgressRail(container, session, job, actions = {})
       status: result.timestamp_end ? 'done' : 'pending',
       hint: result.timestamp_end ? formatDateTime(result.timestamp_end) : '',
     },
-    ...(job?.steps || []).map((step) => ({
+    ...visibleFinalizationSteps(job).map((step) => ({
       key: step.key,
       label: finalizationStepLabel(step, t),
       status: step.status || 'pending',

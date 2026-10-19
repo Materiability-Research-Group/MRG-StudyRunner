@@ -98,16 +98,18 @@ def _stop_everything_for_update() -> dict:
     recording = current_app.config.get("RECORDING_RUNTIME_SERVICE")
     try:
         current = recording.current_status() if recording is not None else None
+        if current and current.get("status") == "frozen":
+            current = None  # already ended and submitted; nothing live to abort
         session_id = str((current or {}).get("session_id") or "")
         paths = recording.find_paths(session_id) if session_id else None
         if paths is not None:
-            current_app.config["WITHDRAWAL_SERVICE"].abort(
+            outcome = current_app.config["WITHDRAWAL_SERVICE"].abort(
                 session_id=session_id,
                 session_root=paths.root,
                 reason=UPDATE_ABORT_REASON,
                 requested_by="update",
             )
-            stopped["session_aborted"] = True
+            stopped["session_aborted"] = (outcome or {}).get("status") != "already_submitted"
     except Exception as error:  # an update must still proceed, e.g. after a WithdrawalError
         stopped["errors"].append(f"session: {error}")
     try:

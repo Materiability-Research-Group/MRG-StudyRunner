@@ -14,7 +14,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 import json
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 from typing import Any
 
 from ..studies.study_plugin_config import (
@@ -27,6 +27,7 @@ from .migrate import migrated_info_top
 # tests and external validators. Unknown legacy keys are migrated instead of
 # being rejected against this tuple.
 from study_runner.data_core.host.study_sensor_runtime import STUDY_SENSOR_KEYS, normalize_study_sensors
+from study_runner.contracts.card_ids import legacy_card_id
 from study_runner.contracts.participant_fields import (
     CHILDHOOD_AREA_OPTIONS,
     CONFIGURABLE_OPTION_DEFAULTS,
@@ -851,7 +852,7 @@ def _validate_question(question_data: Any, question_index: int, study_id: str = 
     if raw_card_id is None or raw_card_id == "":
         # Legacy studies get deterministic IDs. Once saved, the ID follows
         # the card when the researcher moves it in the editor.
-        normalized["card_id"] = str(uuid5(NAMESPACE_URL, f"study-runner:{study_id}:{question_index}"))
+        normalized["card_id"] = legacy_card_id(study_id, question_index)
     else:
         try:
             normalized["card_id"] = str(UUID(str(raw_card_id)))

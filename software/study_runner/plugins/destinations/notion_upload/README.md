@@ -62,6 +62,9 @@ the tables at once and saves the layout with them, but rows only come with an
 upload: sessions recorded before the layout need **Upload again**. Before a
 retry or an upload again, the confirmation lists every setting that changed
 since the session ended, including the layout ("changed since").
+A session recorded before cards had ids (before 1.7.21) carries a study copy
+without them; the upload gives its cards the ids the saved study has
+(`contracts/card_ids.py`), so "Upload again" fills the same card tables.
 
 ### Your own columns
 

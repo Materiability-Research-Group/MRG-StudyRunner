@@ -6,6 +6,7 @@ import {
   finalizationStepLabel,
   pickFinalizationFocus,
   pickUploadFocus,
+  visibleFinalizationSteps,
 } from '../../study_runner/apps/ui/scripts/shared/finalization-view-model.js';
 
 const queued = {
@@ -37,6 +38,10 @@ const degradedPublishing = {
 };
 
 assert.deepEqual(finalizationProgress(queued), { done: 2, total: 3, percent: 67 });
+// A step the server hides (no destination can release source files) is not shown or counted.
+const withHiddenRelease = { ...queued, steps: [...queued.steps, { key: 'purge_local_sources', status: 'skipped', hidden: true }] };
+assert.deepEqual(visibleFinalizationSteps(withHiddenRelease).map((step) => step.key), ['commit_submission', 'freeze_recording', 'publish_notion']);
+assert.deepEqual(finalizationProgress(withHiddenRelease), { done: 2, total: 3, percent: 67 });
 assert.equal(pickFinalizationFocus([completed, queued, attention]), attention);
 assert.equal(pickFinalizationFocus([completed, degradedPublishing]), degradedPublishing);
 assert.equal(finalizationSessionKey(attention), 'finalization:attention');

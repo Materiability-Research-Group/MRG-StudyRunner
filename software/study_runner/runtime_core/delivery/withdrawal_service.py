@@ -49,6 +49,8 @@ from study_runner.shared.atomic_io import atomic_write_json
 
 WITHDRAWAL_SCHEMA = "study-runner/withdrawal/v1"
 WITHDRAWAL_STATE_SCHEMA = "study-runner/withdrawal-state/v1"
+# Written when the participant submits (ArtifactPaths.submission_commit_file).
+SUBMISSION_COMMIT_NAME = ".submission-commit.json"
 
 # Ordered, and the order is a safety property: the writers are stopped and
 # the queue is drained *before* anything is deleted, so nothing can publish
@@ -197,6 +199,15 @@ class WithdrawalService:
         """
         if not str(reason or "").strip():
             raise WithdrawalError("an abort needs a non-empty reason")
+        if (Path(session_root) / "meta" / SUBMISSION_COMMIT_NAME).is_file():
+            # The participant already submitted: there is nothing live left
+            # to stop, and a tombstone would mark a finished session aborted.
+            return {
+                "schema": WITHDRAWAL_STATE_SCHEMA,
+                "session_id": _safe_session_id(session_id),
+                "kind": "admin_abort",
+                "status": "already_submitted",
+            }
         return self.withdraw(
             session_id=session_id,
             session_root=session_root,

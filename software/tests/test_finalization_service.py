@@ -28,6 +28,7 @@ from study_runner.runtime_core.delivery.finalization_service import (
     QualityAttentionError,
     StepResult,
     SubmissionConflictError,
+    _step,
 )
 
 
@@ -535,6 +536,53 @@ class FinalizationServiceTests(unittest.TestCase):
                     Path(temp_dir),
                     destination_definitions=definitions,
                 )
+
+    def test_the_source_release_step_is_hidden_when_no_destination_can_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(Path(temp_dir), destination_handler=RecordingDestinationHandler())
+            job = service.commit_submission(SUBMISSION, recording_expected=True)
+            service.process_due_jobs_once()
+            purge = next(s for s in service.get(job["job_id"])["steps"] if s["key"] == "purge_local_sources")
+            self.assertTrue(purge["hidden"])
+            # Only the public view hides it; the durable state is unchanged.
+            self.assertNotIn("hidden", _step(service._jobs[job["job_id"]], "purge_local_sources"))
+
+    def _archive_service(self, root: Path, handler):
+        definition = DestinationPluginDefinition(
+            plugin_key="archive", destination="archive", label="Archive",
+            default_enabled=True, purge_verified_sources=True,
+        )
+        return self._service(root, destination_handler=handler, destination_definitions=(definition,))
+
+    def test_a_destination_that_can_release_shows_the_step(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._archive_service(Path(temp_dir), RecordingDestinationHandler())
+            job = service.commit_submission(SUBMISSION, recording_expected=True)
+            purge = next(s for s in job["steps"] if s["key"] == "purge_local_sources")
+            self.assertNotIn("hidden", purge)
+
+    def test_retrying_the_releasing_destination_reopens_a_release_that_waited_for_it(self) -> None:
+        class FailsUntilRetried(RecordingDestinationHandler):
+            failing = True
+
+            def publish(self, destination, context):
+                if self.failing:
+                    raise FinalizationError("archive offline")
+                return super().publish(destination, context)
+
+            def retry(self, destination, _context, *, target="snapshot"):
+                self.failing = False
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._archive_service(Path(temp_dir), FailsUntilRetried())
+            job = service.commit_submission(SUBMISSION, recording_expected=True)
+            service.process_due_jobs_once()
+            state = service._jobs[job["job_id"]]
+            self.assertEqual(_step(state, "publish_archive")["status"], "failed")
+            self.assertEqual(_step(state, "purge_local_sources")["status"], "skipped")
+
+            service.retry(job["job_id"], step_key="publish_archive")
+            self.assertEqual(_step(state, "purge_local_sources")["status"], "pending")
 
     def test_conflicting_reuse_of_submission_id_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

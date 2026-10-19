@@ -755,6 +755,12 @@ class FinalizationService:
             "accepted_quality_warnings",
         )
         public = deepcopy({key: state[key] for key in allowed if key in state})
+        if not self._can_release_sources(state):
+            # Nothing can ever release the source files, so the step only
+            # looks unfinished: keep it in the state, leave it off the UIs.
+            for step in public.get("steps") or []:
+                if step.get("key") == "purge_local_sources":
+                    step["hidden"] = True
         public["notice_signature"] = _notice_signature(state)
         # What the operator can do next, decided here so every UI agrees.
         public["can_continue_with_warnings"] = bool(
@@ -1229,6 +1235,13 @@ class FinalizationService:
         self._persist_state(state, event={"event": "step_completed", "step": step_key, "status": result.status})
         return True
 
+    def _can_release_sources(self, state: dict[str, Any]) -> bool:
+        """Whether an enabled destination of this job may verify the source files."""
+        return any(
+            definition.purge_verified_sources and _step(state, definition.step_key).get("enabled", True)
+            for definition in self._destinations(state)
+        )
+
     def _run_purge(self, state: dict[str, Any]) -> bool:
         step = _step(state, "purge_local_sources")
         if step["status"] in {"done", "skipped"}:
@@ -1456,6 +1469,18 @@ class FinalizationService:
                 for warning in state.get("warnings", [])
                 if not str(warning).startswith(f"{target}:")
             ]
+            purge = _step(state, "purge_local_sources")
+            if (
+                target_destination.purge_verified_sources
+                and purge["status"] == "skipped"
+                and str((purge.get("details") or {}).get("reason") or "").startswith(
+                    "remote_source_checksums_not_available"
+                )
+            ):
+                # The release waited for this destination's checksums; give
+                # the new upload the chance to provide them.
+                purge.clear()
+                purge.update(_ordinary_step("purge_local_sources", enabled=True))
             return
 
         state["warnings"] = []
