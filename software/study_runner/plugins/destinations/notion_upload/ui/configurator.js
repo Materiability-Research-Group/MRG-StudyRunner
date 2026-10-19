@@ -27,6 +27,7 @@ import {
   removeValue,
   serializeLayout,
   setCardIncluded,
+  settingsAfterCreate,
   setValueFlag,
   summaryText,
   toggleColumn,
@@ -217,12 +218,16 @@ export function openConfigurator({ plugin, studyId, settings, configData, runAct
         apply,
       });
       state.check = response?.result || response;
-      const updates = state.check?.settings_updates || {};
-      if (apply && Object.keys(updates).length) {
+      const toSave = apply ? settingsAfterCreate(state.check, state.layout) : null;
+      if (toSave) {
         // Remember the created tables together with the layout they belong to.
-        Object.assign(settings, updates);
-        await saveSettings({ ...updates, notion_layout: serializeLayout(state.layout) });
+        Object.assign(settings, toSave);
+        await saveSettings(toSave);
         state.dirty = false;
+        showToast?.(t(
+          'notionLayout.created',
+          'Tables created and layout saved. For sessions recorded before, use “Upload again” to fill them.',
+        ), 'success');
       }
     } catch (error) {
       state.check = { ok: false, error: error.message || String(error) };

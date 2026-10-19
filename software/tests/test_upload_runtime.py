@@ -241,6 +241,27 @@ class UploadTargetPersistenceTests(unittest.TestCase):
         self.assertEqual(field["snapshot"], "parent-1")
         self.assertEqual(field["current"], "new-parent")
 
+    def test_retry_target_describer_names_a_changed_layout_without_dumping_it(self) -> None:
+        edited = study()
+        settings(edited)["notion_layout"] = {"version": 1, "card_comparison": True}
+        self.save(edited)
+
+        comparison = self.describer()({"kind": "notion"}, self.queued)
+        self.assertTrue(comparison["differs"])
+        [field] = comparison["fields"]
+        self.assertEqual(field["name"], "notion_layout")
+        self.assertEqual(field["kind"], "structured")
+        self.assertEqual((field["snapshot"], field["current"]), ("", ""))
+
+    def test_retry_target_describer_treats_an_empty_layout_as_none(self) -> None:
+        edited = study()
+        settings(edited)["notion_layout"] = {}
+        self.save(edited)
+        self.assertNotIn("notion_layout", settings(self.queued["config_data"]))
+
+        comparison = self.describer()({"kind": "notion"}, self.queued)
+        self.assertEqual(comparison, {"differs": False, "fields": []})
+
     def test_retry_target_describer_reports_a_deleted_study(self) -> None:
         self.save(study("Study B"))  # a different study is now active
         delete_study(self.app.config["SAVED_STUDIES_DIR"], "Study A")

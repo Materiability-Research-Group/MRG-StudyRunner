@@ -104,7 +104,7 @@
     "apps": 0,
     "apps.server": 5495,
     "apps.ui": 0,
-    "apps.ui.admin": 6397,
+    "apps.ui.admin": 6404,
     "apps.ui.cards": 4904,
     "apps.ui.participant": 3445,
     "apps.ui.settings": 2291,
@@ -118,10 +118,10 @@
     "plugin_framework": 4224,
     "plugins": 0,
     "plugins.cards": 1465,
-    "plugins.destinations": 3295,
+    "plugins.destinations": 3309,
     "plugins.outputs": 142,
     "plugins.sensors": 11598,
-    "runtime_core": 16462,
+    "runtime_core": 16483,
     "shared": 466,
     "updates": 744
   }

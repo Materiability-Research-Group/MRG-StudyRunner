@@ -135,6 +135,16 @@ export function notionTree(layout, sources = {}, labels = {}) {
   return tree;
 }
 
+/**
+ * What to save after "Create tables now", or null when nothing was created.
+ * The layout is always saved with the tables it created: uploads read the
+ * saved layout, so tables created for an unsaved one would stay empty.
+ */
+export function settingsAfterCreate(check, layout) {
+  if (!check?.ok || !check.applied) return null;
+  return { ...(check.settings_updates || {}), notion_layout: serializeLayout(layout) };
+}
+
 /** One line for the study settings panel. */
 export function summaryText(settings = {}, labels = {}) {
   const text = (key, fallback) => labels[key] || fallback;

@@ -56,6 +56,28 @@ recorded before it. Columns the layout no longer lists, rows of other sessions
 and anything added by hand in Notion stay untouched; the plugin never deletes
 or archives anything.
 
+A session's first upload uses the settings the study had when the session
+ended, including the layout. **Create tables now** in the configurator builds
+the tables at once and saves the layout with them, but rows only come with an
+upload: sessions recorded before the layout need **Upload again**. Before a
+retry or an upload again, the confirmation lists every setting that changed
+since the session ended, including the layout ("changed since").
+
+### Your own columns
+
+Add as many columns to these tables in Notion as you like, for example a
+`Verbal feedback` text column in Participants. The upload writes only its own
+columns, so yours are never overwritten or cleared (`test_notion_publish.py`
+holds it to that). Three rules:
+
+- Do not name your column like one of the plugin's (`Participant ID`,
+  `Sessions`, `First Session`, `Last Session`, the intake fields, `Status`,
+  `Answer…`, the value columns).
+- Do not rename or delete `StudyRunner Sessions` or `StudyRunner Key`: they
+  tell the upload which sessions and rows are already there.
+- Do not change a participant's `Participant ID` in Notion: the next upload
+  finds the row by it and would create a second one.
+
 Tables are found again even when a saved ID is lost: the Participants table
 by its title on the page ("Participants", or "StudyRunner Participants" from
 plugin 1.x, which is taken over), the comparison page by its title, and each

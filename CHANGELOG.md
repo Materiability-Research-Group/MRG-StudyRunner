@@ -5,6 +5,15 @@ All notable Study Runner changes are documented here. Release tags use
 
 ## Unreleased
 
+### Fixed
+
+- **Notion plugin 2.0.2.** "Create tables now" in the Notion configurator saved the layout only when Notion returned new table ids. When the tables' parents were already known, the layout stayed unsaved, and the uploads that followed filled only the Participants table while the answers and card tables stayed empty. The layout is now always saved with the tables it creates, and a hint says that sessions recorded before need "Upload again".
+- The dialog before a retry or "Upload again" now lists every destination setting that changed since the session ended, not only text settings. A changed Notion layout appears as "changed since", so a retry can choose between the settings from then and the current ones.
+
+### Documentation
+
+- The Notion plugin README explains that columns added in Notion by hand (for example verbal feedback in Participants) are never overwritten, and which plugin columns must keep their names.
+
 ## 1.7.22 - 2026-10-19
 
 ### Added

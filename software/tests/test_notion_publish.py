@@ -179,6 +179,23 @@ class NotionPublishTests(unittest.TestCase):
         row = self.notion.rows(slider)[0]["properties"]
         self.assertEqual(row["eda_signal · eda · mean"], {"number": 0.42})
 
+    def test_columns_the_operator_adds_in_notion_are_never_touched(self) -> None:
+        self.upload(session(self.config))
+        feedback = {"rich_text": [{"type": "text", "text": {"content": "Felt calm, liked the warmth."}}]}
+        for database in (self.participants(), self.comparison_db("02 ·")):
+            source = self.notion.source_store[self.notion.database_store[database]["source"]]
+            source["properties"]["Verbal feedback"] = {"type": "rich_text", "rich_text": {}}
+            self.notion.rows(database)[0]["properties"]["Verbal feedback"] = deepcopy(feedback)
+
+        self.assertTrue(self.upload(session(self.config))["ok"])
+        self.assertTrue(self.upload(session(self.config, session_id="session-2"))["ok"])
+
+        for database in (self.participants(), self.comparison_db("02 ·")):
+            self.assertEqual(self.notion.columns(database)["Verbal feedback"], "rich_text")
+            first = next(row for row in self.notion.rows(database) if "Verbal feedback" in row["properties"])
+            self.assertEqual(first["properties"]["Verbal feedback"], feedback)
+        self.assertEqual(len(self.notion.rows(self.participants())), 1)
+
     def test_lost_ids_find_the_same_tables_again(self) -> None:
         self.upload(session(self.config))
         pages_before = len(self.notion.page_store)

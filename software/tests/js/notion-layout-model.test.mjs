@@ -11,6 +11,7 @@ import {
   serializeLayout,
   setCardIncluded,
   setValueFlag,
+  settingsAfterCreate,
   summaryText,
 } from '../../study_runner/plugins/destinations/notion_upload/ui/layout-model.js';
 
@@ -75,6 +76,20 @@ test('an exported layout keeps its card switches only in its own study', () => {
   assert.deepEqual(importLayout(file, 'study-a').cards, { c2: true });
   assert.deepEqual(importLayout(file, 'study-b').cards, {});
   assert.throws(() => importLayout({ format: 'other' }, 'study-a'), /not a Study Runner Notion layout/);
+});
+
+test('creating tables always saves the layout they were created for', () => {
+  const layout = setValueFlag(normalizeLayout({}, SOURCES), 'answer', 'comparison', true);
+  // No new ids (the tables' parents were known): the layout is still saved.
+  assert.deepEqual(settingsAfterCreate({ ok: true, applied: true, settings_updates: {} }, layout), {
+    notion_layout: serializeLayout(layout),
+  });
+  assert.deepEqual(
+    settingsAfterCreate({ ok: true, applied: true, settings_updates: { comparison_page_id: 'p1' } }, layout),
+    { comparison_page_id: 'p1', notion_layout: serializeLayout(layout) },
+  );
+  assert.equal(settingsAfterCreate({ ok: true, applied: false }, layout), null);
+  assert.equal(settingsAfterCreate({ ok: false, error: 'x' }, layout), null);
 });
 
 test('the summary names what the study creates', () => {

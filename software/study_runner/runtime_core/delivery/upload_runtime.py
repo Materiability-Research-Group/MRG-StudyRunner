@@ -26,6 +26,11 @@ from ..studies.study_config_service import (
 from ..studies.study_plugin_config import normalize_study_settings_plugins
 from .upload_jobs_service import PermanentUploadError, UploadJobError, UploadJobService
 
+# Study settings the retry comparison shows by value; any other type is only
+# named as changed. Secrets are never compared.
+_TEXT_SETTING_TYPES = frozenset({"string", "url"})
+_SECRET_SETTING_TYPES = frozenset({"secret", "password"})
+
 
 def configure_upload_jobs(app) -> UploadJobService:
     """Register every valid ``upload_destination`` plugin without a key list."""
@@ -91,16 +96,30 @@ def _current_plugin_selection(app: Any, study_id: str, plugin_key: str) -> dict[
 def _retry_target_describer(app: Any, plugin: Plugin) -> Callable[[dict[str, Any], dict[str, Any] | None], dict[str, Any]]:
     """Build the comparison a retry confirmation shows for one destination.
 
-    Compares every declared string setting (not only the discovered ones):
-    a hand-entered field such as the Notion parent page can drift from the
-    frozen snapshot just as easily as an auto-discovered database id.
+    Compares every declared setting (not only the discovered ones): a
+    hand-entered field such as the Notion parent page can drift from the
+    frozen snapshot just as easily as an auto-discovered database id, and a
+    structured one such as the Notion layout decides what an upload writes.
+    Text settings are shown as they are; a structured setting is only named
+    as changed (``kind: "structured"``), never dumped. A missing value counts
+    as the field's default, so ``{}`` and an absent layout are the same.
     """
     manifest = get_plugin_manifest(plugin.key)
     schema = manifest.get("study_settings_schema") or {}
-    string_fields = [name for name, field in schema.items() if field.get("type") == "string"]
+    fields_to_compare = {
+        name: field for name, field in schema.items()
+        if not field.get("secret") and field.get("type") not in _SECRET_SETTING_TYPES
+    }
+
+    def comparable(field: dict[str, Any], value: Any) -> str:
+        if value is None:
+            value = field.get("default")
+        if field.get("type") in _TEXT_SETTING_TYPES:
+            return str(value or "")
+        return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
 
     def describe(job: dict[str, Any], payload: dict[str, Any] | None) -> dict[str, Any]:
-        if payload is None or not string_fields:
+        if payload is None or not fields_to_compare:
             return {"differs": False, "fields": []}
         config_data = payload.get("config_data") or {}
         frozen_selection = ((config_data.get("study_settings") or {}).get("plugins") or {}).get(plugin.key) or {}
@@ -111,16 +130,18 @@ def _retry_target_describer(app: Any, plugin: Plugin) -> Callable[[dict[str, Any
         if current_selection is None:
             return {"differs": False, "fields": [], "study_missing": True}
         current_settings = current_selection.get("settings") or {}
-        fields = [
-            {
-                "name": name,
-                "label_key": schema.get(name, {}).get("label_key") or name,
-                "snapshot": str(frozen_settings.get(name) or ""),
-                "current": str(current_settings.get(name) or ""),
-            }
-            for name in string_fields
-            if str(frozen_settings.get(name) or "") != str(current_settings.get(name) or "")
-        ]
+        fields = []
+        for name, field in fields_to_compare.items():
+            snapshot = comparable(field, frozen_settings.get(name))
+            current = comparable(field, current_settings.get(name))
+            if snapshot == current:
+                continue
+            entry = {"name": name, "label_key": field.get("label_key") or name}
+            if field.get("type") in _TEXT_SETTING_TYPES:
+                entry.update(snapshot=snapshot, current=current)
+            else:
+                entry.update(kind="structured", snapshot="", current="")
+            fields.append(entry)
         return {"differs": bool(fields), "fields": fields}
 
     return describe

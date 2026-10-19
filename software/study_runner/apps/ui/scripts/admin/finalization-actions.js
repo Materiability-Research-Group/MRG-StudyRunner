@@ -51,11 +51,18 @@ function confirmRetryTarget(fields) {
 }
 
 function targetTable(fields) {
+  // A structured setting (e.g. the Notion layout) is only named as changed.
+  const then = (field) => (field.kind === 'structured'
+    ? t('finalization.retryTargetStructuredThen', 'as when the session ended')
+    : field.snapshot || '—');
+  const now = (field) => (field.kind === 'structured'
+    ? t('finalization.retryTargetStructuredNow', 'changed since')
+    : field.current || '—');
   const rows = fields.map((field) => `
       <tr>
         <td>${escapeHtml(t(field.label_key, field.name))}</td>
-        <td class="retry-target-then">${escapeHtml(field.snapshot || '—')}</td>
-        <td class="retry-target-now">${escapeHtml(field.current || '—')}</td>
+        <td class="retry-target-then">${escapeHtml(then(field))}</td>
+        <td class="retry-target-now">${escapeHtml(now(field))}</td>
       </tr>`).join('');
   return `
       <table class="retry-target-table">
