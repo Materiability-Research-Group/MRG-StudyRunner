@@ -626,6 +626,22 @@ Rules:
 **Analysis scripts:** answer keys, the flow trace and instance suffixes on stream ids are new.
 The researcher guide gets a "1.x → 2.0 data" page.
 
+**Comparing sessions across software versions.** Every session already records the Study Runner
+version and the version of each plugin that took part (`meta/manifest.json`,
+`provenance.software`). To judge whether two sessions are comparable, compare those versions.
+The rules below are a recommendation for researchers. Study Runner does not block anything.
+
+| Step | Example | Meaning for comparability |
+| --- | --- | --- |
+| PATCH | 1.2.3 → 1.2.4 | Bug fix. Not relevant for comparability. |
+| MINOR | 1.2.4 → 1.3.0 | Larger change. Read the changelog and check whether it touches the study. |
+| MAJOR | 1.3.0 → 2.0.0 | Do a comparability check before pooling data. |
+
+Plugin versions follow the same steps. A plugin MAJOR step always means the recorded data
+changed meaning (CONTRIBUTING.md §11), so sessions that differ in a recording plugin MAJOR
+version should not be pooled without checking. The researcher guide gets this table.
+Sessions recorded before version tracking are marked `"partial": true`.
+
 ## 9. Branch and release strategy
 
 - **Branches.**
@@ -814,6 +830,47 @@ and behave:
 - **Several computers:** devices attached to other computers in other rooms. LSL already works
   across a network, but the plugin processes would need a network link. Nothing is built or
   prepared for it.
+
+## 13a. Vision: reliable over-the-air updates
+
+Status: vision, not committed scope. Nothing here is scheduled and no milestone depends on it.
+
+**Today.** The dashboard checks the latest GitHub Release, downloads the source archive,
+verifies its SHA-256, swaps the program files, runs the install script, restarts, and rolls
+back on failure (`docs/release-and-update.md`). The mechanism works. What is missing are the
+guarantees around it.
+
+**Goal.** An operator who is not technical presses one button and the installation moves to a
+newer version without losing data, and with a way back.
+
+**Principles.**
+- **Versions are recorded, comparability is the researcher's call.** Every session records the
+  Study Runner version and all plugin versions. Whether two versions are comparable is a
+  recommendation (section 8). Updates are never blocked by it.
+- **No update during a recording.** An update waits until no station records. On a computer
+  with several stations it waits until all are idle and names the one blocking.
+- **Apply, verify, or go back.** After the restart the app runs its own self-check
+  (`server.py --self-check` today) automatically. If it fails, the previous version is
+  restored without operator action, and the dashboard says what happened in plain language.
+- **Stable install location.** The install folder has a fixed, version-free name, and the
+  desktop shortcut keeps working across versions. The version is shown in the dashboard, not
+  in a folder name. Today the release archive's root folder carries the version, the updater
+  never renames it, and the macOS shortcut stores the absolute folder path.
+- **Quiet and visible.** The update downloads in the background and is applied when the
+  operator chooses. Applying shows one progress screen, not a Terminal window that must stay
+  open.
+- **Works on a bad network.** Everything an update needs is fetched and checked before the old
+  version is touched, or comes from an offline bundle for lab networks.
+- **Channels.** Stable installations are never offered prereleases (section 9).
+- **One way back.** The last working version stays available with a single "go back" action.
+  Study data is never touched by updates.
+
+**To be decided later.**
+- **Signed releases.** Today the checksum comes from the same release as the archive, so it
+  shows that the download is intact, not that it is authentic. Whether to sign releases, and
+  with which key handling, is not decided and is not part of any milestone.
+- Whether the Python environment is rebuilt on update or shipped prebuilt per platform.
+- How study files with a `schema_version` change are migrated on update.
 
 ## 14. Sources
 
