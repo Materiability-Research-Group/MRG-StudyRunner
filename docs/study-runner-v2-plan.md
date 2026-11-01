@@ -830,6 +830,8 @@ and behave:
 - **Several computers:** devices attached to other computers in other rooms. LSL already works
   across a network, but the plugin processes would need a network link. Nothing is built or
   prepared for it.
+- **An integrated kiosk browser:** a controlled full-screen window for participant views on the
+  study computer (section 13b). Nothing is built or prepared for it.
 
 ## 13a. Vision: reliable over-the-air updates
 
@@ -871,6 +873,66 @@ newer version without losing data, and with a way back.
   with which key handling, is not decided and is not part of any milestone.
 - Whether the Python environment is rebuilt on update or shipped prebuilt per platform.
 - How study files with a `schema_version` change are migrated on update.
+
+## 13b. Vision: an integrated kiosk browser
+
+Status: vision, not committed scope. Nothing here is scheduled and no milestone depends on it.
+The idea comes from the planning of MRG TRACE, the proposed successor of Study Runner
+(2026-11-01). Nothing is built or prepared for it in V2.0.
+
+**Idea.** The app shows local participant views, stimuli and questionnaires in its own
+controlled full-screen window, so the operator does not start a separate browser. Navigation
+follows the study session. Browser and stimulus events are logged with timestamps on the
+shared time base.
+
+**Scope.**
+- In: the participant view on the study computer itself, for example on a second screen.
+- Out: external tablets and iPads. They stay normal browser clients, paired by station code
+  (sections 5.7 and 6). A kiosk window does not replace them.
+
+**Why.** Today a participant can leave the study page, resize the window or reload it, and the
+page cannot say when a stimulus really appeared on the screen. A controlled window closes the
+first gaps. The event log is the start of an answer to the timing question.
+
+**Recommendation, to be confirmed by a spike.**
+1. **Do not write a browser.** The server starts a pinned Chromium build as a managed child
+   process, with its own profile, the kiosk or app window flags and no extensions. The build is
+   pinned and checked by SHA-256 like `uv` and Python are today. The browser version is
+   recorded in each session's provenance.
+2. **Control it from the server** with the Chrome DevTools Protocol. Allow navigation only to
+   the URLs of the running session, block everything else, and read navigation, page and
+   stimulus events from the same connection.
+3. **Use the shared time base.** Event times are mapped to the recording clock with a measured
+   offset, not with the page clock alone.
+4. **Serve the view from `http://localhost`.** Browsers treat localhost as a secure context,
+   so the camera should work on the same computer without installing the Study Runner Root
+   CA. Tablets still need the Root CA.
+5. **Never lock a participant in.** The operator keeps a visible way to end the session, and
+   consent withdrawal stays possible.
+
+**Options not chosen for now.**
+
+| Option | Reason |
+|---|---|
+| System webview (for example pywebview) | WebView2 on Windows and WKWebView on macOS are two engines. A study could behave differently per system, which weakens reproducibility. |
+| Electron | One engine everywhere, but a second runtime and toolchain, a large package and its own update duty. |
+| Tauri | The old Tauri wrapper was removed and a Tauri rebuild is a standing "no". It also uses a different webview engine per system. |
+| OS kiosk only (for example Windows Assigned Access) | Locks the computer, but does not tie navigation or events to the session. It can be added around the recommended window. |
+
+**Measure first, assume no numbers.**
+- Jitter and offset of event timestamps against the shared time base.
+- Stimulus onset against a real display signal (for example a photodiode). The page alone
+  cannot know when the screen changed.
+- Full-screen behaviour on macOS and window focus when the system shows a notification.
+- Size of the browser download and its effect on the installer.
+
+**Open questions.**
+- Licence and redistribution terms of the chosen Chromium build, before anything is bundled.
+- macOS: signing and Gatekeeper for a downloaded browser binary.
+- Codec support (H.264, AAC) differs between plain Chromium and Chrome builds. Do stimuli need it?
+- Platforms: Windows x64 and macOS 13+ like today?
+- Which tool controls the browser: a plain DevTools client or a library. A new runtime
+  dependency is a decision for the owner.
 
 ## 14. Sources
 
