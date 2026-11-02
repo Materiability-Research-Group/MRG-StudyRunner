@@ -933,6 +933,41 @@ plays MP4 with the system decoders.
 Electron stays the fallback. Exit criterion: the spike shows that QtWebEngine cannot be signed
 and notarized on macOS, or cannot show the kiosk view on a second screen reliably.
 
+**Media on the study computer (owner, 2026-11-02): convert on import.** Researchers keep
+importing MP4 or other files. The app converts them once into WebM (VP9 or AV1 video, Opus
+audio), which QtWebEngine plays without patent-encumbered codecs.
+- The original file stays untouched next to the converted one. Both get a SHA-256.
+- The study package records the conversion: tool and version, settings, source and target
+  hash, and duration and frame rate before and after. A study run uses only the converted file.
+- Decoding the source should use the system decoders where possible (AVFoundation on macOS,
+  Media Foundation on Windows), so that no H.264 decoder has to be bundled. Encoding uses
+  libvpx (BSD) or SVT-AV1 (BSD). Whether the system decoders cover all needed formats on both
+  systems is part of the spike. If a bundled decoder is needed after all, the patent question
+  goes to the owner before release.
+- Conversion runs in a background job with progress and can be cancelled. It never runs during
+  a recording.
+- A quick check after conversion: duration, frame count and audio length within a stated
+  tolerance, otherwise the import fails with a clear message.
+
+**Spike step 1: sign and notarize on macOS.** This comes first because it is the exit
+criterion. Done on a real Mac, Apple Silicon and Intel if possible.
+1. Build a minimal PySide6 app with one QtWebEngine window that loads the local admin page, as
+   a one-folder `.app` (PyInstaller or `pyside6-deploy`, both tried if the first fails).
+2. Ad-hoc sign and run it with hardened runtime. This needs no Apple account and shows early
+   whether the QtWebEngine helper starts.
+3. Sign with a Developer ID, hardened runtime on, inside out (helpers and frameworks first,
+   app last). Give the `QtWebEngineProcess` helper only the entitlements it needs and record
+   each one with its reason.
+4. Notarize with `notarytool`, staple the ticket, check with `spctl --assess` and
+   `codesign --verify --deep --strict`.
+5. Download the result on a second, clean Mac and open it by double-click. Pass: no Gatekeeper
+   warning, the window renders the page, the kiosk view opens on a second screen, the app
+   quits cleanly.
+6. Record build tool, versions, entitlements, size and the exact commands in a short spike
+   report.
+Needs: an Apple Developer account (Developer ID certificate). Who holds it is an owner question.
+Windows signing follows as step 2 with the same pass criteria.
+
 **Starting when Study Runner is already running.** Today a second start prints "Port is already
 in use" in the terminal and quits (`apps/server/application.py`, `_ensure_port_is_free`). In the
 app this becomes a dialog.
@@ -1018,7 +1053,8 @@ university should check them before anything is bundled.
 - The stop endpoint for Restart is a new local control right. Its token handling is part of the
   spike.
 - Which events are time-critical in the studies, and how large an uncertainty is acceptable?
-- Codecs: do stimuli on the study computer need H.264 or AAC?
+- Which source formats must import support, and do the system decoders cover them on both
+  systems?
 - Platforms: Windows x64 and macOS 13+ like today?
 - How the server runs inside the app: child process, ports, restart after a crash.
 
