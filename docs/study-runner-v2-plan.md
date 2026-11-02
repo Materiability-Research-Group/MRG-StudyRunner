@@ -830,9 +830,9 @@ and behave:
 - **Several computers:** devices attached to other computers in other rooms. LSL already works
   across a network, but the plugin processes would need a network link. Nothing is built or
   prepared for it.
-- **A real desktop app with an integrated kiosk view:** an installed program with its own
-  windows, and a controlled full-screen window for participant views on the study computer
-  (section 13b). Nothing is built or prepared for it.
+- **A real desktop app with an integrated kiosk view:** an installed PySide6 program with its own
+  windows, a controlled full-screen window for participant views on the study computer, and a
+  dialog when Study Runner is already running (section 13b). Nothing is built or prepared for it.
 
 ## 13a. Vision: reliable over-the-air updates
 
@@ -916,12 +916,42 @@ study session. Browser and stimulus events are logged with timestamps on the sha
 | Tauri shell with the Python server as a sidecar | Small package, same stack as OCYRA and TAZAMA. | WebView2 on Windows and WKWebView on macOS are two engines, so a study could behave differently per system. A Tauri wrapper existed in 1.x and was dropped, the repo does not record why. |
 | Pinned Chromium started by the server and controlled over the DevTools Protocol | The smallest change, no new shell. | Still no app of its own: no installer and no window the user knows. Only the kiosk view improves. |
 
-**Candidates.** An app shell with its own bundled Chromium, with the Python server inside:
-PySide6 with QtWebEngine or Electron. One engine everywhere matters for research, and a real
-app needs a shell anyway. PySide6 keeps everything in Python and avoids bundling H.264 decoders.
-Electron has the better tooling and plays H.264, with the open patent question. To be decided
-by a spike, not decided here. The tablets are not affected: Safari on the iPad plays MP4
-with the system decoders.
+**Direction (owner, 2026-11-02): PySide6 with QtWebEngine.** A clear Python app, open source,
+one language from the server to the window. The tablets are not affected: Safari on the iPad
+plays MP4 with the system decoders.
+
+| | PySide6 + QtWebEngine | Electron |
+|---|---|---|
+| Languages | Python only | Python server plus Node and JavaScript for the shell |
+| Engine | One Chromium everywhere (follows upstream with a delay) | One Chromium everywhere (close to upstream) |
+| H.264 and AAC on the desktop | Not in open builds; WebM or conversion on import | Included; patent question stays open |
+| Licence | LGPL v3 for Qt and PySide6: notices, replaceable libraries (one-folder build, not one file) | MIT, plus Chromium licences |
+| Packaging and update | No standard updater; the existing source updater or a small own one | Mature builders and an auto-updater |
+| macOS signing | Possible; the QtWebEngine helper needs extra entitlements | Well documented |
+| Package size | Large (Qt plus QtWebEngine) | Large (Chromium plus Node) |
+
+Electron stays the fallback. Exit criterion: the spike shows that QtWebEngine cannot be signed
+and notarized on macOS, or cannot show the kiosk view on a second screen reliably.
+
+**Starting when Study Runner is already running.** Today a second start prints "Port is already
+in use" in the terminal and quits (`apps/server/application.py`, `_ensure_port_is_free`). In the
+app this becomes a dialog.
+- *Detect.* An instance file in the data folder records process id, port, version, data folder,
+  start time and a random local token. The app checks it, then asks `/api/health` on that port
+  whether a Study Runner with the same data folder answers. Only both together count as
+  "running". A stale file (process gone, no answer) is removed and the start continues.
+- *Ask.* "Study Runner is already running (version, since when). Open it, or restart it?"
+  - **Open:** brings the running window to the front, or opens its admin view. No second server.
+  - **Restart:** asks the running server to stop through a local-only endpoint that needs the
+    token, waits until the port is free, then starts.
+- *Never break a recording.* While a station records or a session is active, Restart is not
+  offered. The dialog names the station and offers only Open. Stopping a recording stays a
+  deliberate action in the admin view.
+- *Another program on the port.* If something answers that is not Study Runner, say so plainly
+  and offer to start on another free port.
+- *One app window.* A second launch of the app hands over to the first one (Qt local socket),
+  like any normal program.
+- Tests: running, stale file, foreign program on the port, active recording.
 
 **Timing without shortcuts.** These rules cost little now and keep recorded data honest.
 - Estimate the clock offset between the server and each tablet with repeated pings. Keep the
@@ -983,7 +1013,10 @@ university should check them before anything is bundled.
 
 **Open questions.**
 - Owner: who holds the signing credentials, and who pays for them.
-- Shell choice by spike: Electron against PySide6, using the measures above.
+- Spike for PySide6: signed and notarized on macOS, kiosk view on a second screen, package size,
+  start time, update path. Electron only if the exit criterion is met.
+- The stop endpoint for Restart is a new local control right. Its token handling is part of the
+  spike.
 - Which events are time-critical in the studies, and how large an uncertainty is acceptable?
 - Codecs: do stimuli on the study computer need H.264 or AAC?
 - Platforms: Windows x64 and macOS 13+ like today?
