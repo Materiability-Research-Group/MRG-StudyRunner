@@ -927,11 +927,10 @@ plays MP4 with the system decoders.
 | H.264 and AAC on the desktop | Not in open builds; WebM or conversion on import | Included; patent question stays open |
 | Licence | LGPL v3 for Qt and PySide6: notices, replaceable libraries (one-folder build, not one file) | MIT, plus Chromium licences |
 | Packaging and update | No standard updater; the existing source updater or a small own one | Mature builders and an auto-updater |
-| macOS signing | Possible; the QtWebEngine helper needs extra entitlements | Well documented |
+| macOS without a Developer ID | Assembled locally by the installer, ad-hoc signed (spike step 1) | Same approach would apply |
 | Package size | Large (Qt plus QtWebEngine) | Large (Chromium plus Node) |
 
-Electron stays the fallback. Exit criterion: the spike shows that QtWebEngine cannot be signed
-and notarized on macOS, or cannot show the kiosk view on a second screen reliably.
+Electron stays the fallback. Exit criterion: see spike step 1 below.
 
 **Media on the study computer (owner, 2026-11-02): convert on import.** Researchers keep
 importing MP4 or other files. The app converts them once into WebM (VP9 or AV1 video, Opus
@@ -949,24 +948,44 @@ audio), which QtWebEngine plays without patent-encumbered codecs.
 - A quick check after conversion: duration, frame count and audio length within a stated
   tolerance, otherwise the import fails with a clear message.
 
-**Spike step 1: sign and notarize on macOS.** This comes first because it is the exit
-criterion. Done on a real Mac, Apple Silicon and Intel if possible.
-1. Build a minimal PySide6 app with one QtWebEngine window that loads the local admin page, as
-   a one-folder `.app` (PyInstaller or `pyside6-deploy`, both tried if the first fails).
-2. Ad-hoc sign and run it with hardened runtime. This needs no Apple account and shows early
-   whether the QtWebEngine helper starts.
-3. Sign with a Developer ID, hardened runtime on, inside out (helpers and frameworks first,
-   app last). Give the `QtWebEngineProcess` helper only the entitlements it needs and record
-   each one with its reason.
-4. Notarize with `notarytool`, staple the ticket, check with `spctl --assess` and
-   `codesign --verify --deep --strict`.
-5. Download the result on a second, clean Mac and open it by double-click. Pass: no Gatekeeper
-   warning, the window renders the page, the kiosk view opens on a second screen, the app
-   quits cleanly.
-6. Record build tool, versions, entitlements, size and the exact commands in a short spike
-   report.
-Needs: an Apple Developer account (Developer ID certificate). Who holds it is an owner question.
-Windows signing follows as step 2 with the same pass criteria.
+**Distribution without an Apple Developer ID (owner, 2026-11-02).** There will be no Apple
+Developer account, so no notarization. A downloaded, unnotarized app is blocked by Gatekeeper
+and on current macOS can only be opened through System Settings, Privacy & Security, "Open
+Anyway". That is not acceptable for operators. Therefore:
+- The app is **assembled on the computer by the existing installer** (`tools/install-macos.sh`,
+  `tools/install-windows.cmd`), not downloaded as a finished app. Gatekeeper checks downloaded
+  files that carry the quarantine flag. A bundle that the installer creates locally from the
+  verified release files does not carry it.
+- macOS: the installer writes a small `Study Runner.app` into the Applications folder (icon,
+  `Info.plist`, launcher that starts the PySide6 app from the install's own Python), ad-hoc
+  signs it, and does not add a quarantine flag. It shows up in Launchpad, Spotlight and the
+  Dock like any program.
+- Windows: the installer creates a Start menu and desktop entry with icon that starts the app
+  without a console window. Unsigned files that were created locally carry no web mark, so
+  SmartScreen does not warn.
+- The app bundle has a fixed, version-free name. The updater replaces the files inside it, so
+  shortcuts keep working across versions (section 13a).
+- The first install stays one terminal command, as today. Everything after that is a normal
+  program.
+- Not used: unsigned Homebrew casks (Homebrew is phasing out casks that fail Gatekeeper),
+  telling users to remove quarantine flags by hand.
+- Windows signing stays optional. Free signing for open source projects (for example the
+  SignPath Foundation) can be checked later; it is not required for this path.
+
+**Spike step 1: a locally assembled app on macOS.** Comes first because it replaces the exit
+criterion. Done on a real Mac, Apple Silicon and Intel if possible, with no Apple account.
+1. Minimal PySide6 app with one QtWebEngine window that loads the local admin page.
+2. Installer step that builds `Study Runner.app` in the Applications folder from the install
+   folder and ad-hoc signs it (`codesign --sign -`).
+3. On a clean Mac: download the release in a browser, run the install command, then start the
+   app from Launchpad. Pass: no Gatekeeper dialog, the page renders (QtWebEngine helper starts),
+   the kiosk view opens on a second screen, quit is clean.
+4. Run the updater once. Pass: the app still starts from the Dock and from Launchpad.
+5. Record macOS version, chip, PySide6 version, bundle size and the exact commands in a short
+   spike report.
+Exit criterion for Electron: the locally assembled QtWebEngine app does not start without a
+Gatekeeper dialog, or the kiosk view fails on a second screen. The same steps then run on
+Windows.
 
 **Starting when Study Runner is already running.** Today a second start prints "Port is already
 in use" in the terminal and quits (`apps/server/application.py`, `_ensure_port_is_free`). In the
@@ -1047,9 +1066,8 @@ university should check them before anything is bundled.
 - Package size, start time and update path of each shell candidate.
 
 **Open questions.**
-- Owner: who holds the signing credentials, and who pays for them.
-- Spike for PySide6: signed and notarized on macOS, kiosk view on a second screen, package size,
-  start time, update path. Electron only if the exit criterion is met.
+- Spike for PySide6: locally assembled app on macOS, kiosk view on a second screen, package
+  size, start time, update path. Electron only if the exit criterion is met.
 - The stop endpoint for Restart is a new local control right. Its token handling is part of the
   spike.
 - Which events are time-critical in the studies, and how large an uncertainty is acceptable?
