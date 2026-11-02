@@ -898,12 +898,12 @@ study session. Browser and stimulus events are logged with timestamps on the sha
 
 **Why.**
 - In a normal browser a participant can leave the study page, resize the window or reload it.
-- A page only knows when its code ran, not when the pixels changed. A frame is drawn at the
-  next screen refresh (up to 16.7 ms later at 60 Hz) and the display adds its own delay. The
-  delay differs between screens and is not constant. For analysis that is aligned on stimulus
-  onset this matters. The honest answer is to log the time together with an uncertainty and to
-  measure the delay once per setup with a light sensor. This follows the Recorder Core rule of
-  honest timing uncertainty.
+- The participant sees the cards on the tablet, so the delay between a server event and the
+  moment the participant sees it is the timing question that counts. It has three parts: network
+  delay and jitter, the offset between the server clock and the tablet clock, and the screen.
+  Frame-accurate stimulus timing is not a goal for the current studies. The honest answer is to
+  log times together with an uncertainty and not to promise exact onsets. This follows the
+  Recorder Core rule of honest timing uncertainty.
 - Different browser engines on different computers make rendering and timing differ between
   sites.
 
@@ -912,13 +912,35 @@ study session. Browser and stimulus events are logged with timestamps on the sha
 | Option | For | Against |
 |---|---|---|
 | Electron shell with the Python server as a child process | One Chromium on every system, so rendering and timing are the same. Windows, tray, kiosk windows on a second screen, installers and updater in one place. The Python code stays. | A second runtime (Node), a large package, Chromium security updates become our duty, signing is needed. |
-| PySide6 with QtWebEngine (Chromium inside Qt), all in Python | One language, one engine everywhere, native windows. | Qt licence duties (LGPL), QtWebEngine follows Chromium with a delay, a large package, Qt skills are needed. |
+| PySide6 with QtWebEngine (Chromium inside Qt), all in Python | One language, one engine everywhere, native windows. No H.264 decoder has to be bundled. | Qt licence duties (LGPL). Open Qt builds do not play H.264 or AAC, so desktop stimuli need WebM or a conversion on import. On macOS the QtWebEngine helper process needs extra entitlements for notarization. QtWebEngine follows Chromium with a delay, a large package, Qt skills are needed. |
 | Tauri shell with the Python server as a sidecar | Small package, same stack as OCYRA and TAZAMA. | WebView2 on Windows and WKWebView on macOS are two engines, so a study could behave differently per system. A Tauri wrapper existed in 1.x and was dropped, the repo does not record why. |
 | Pinned Chromium started by the server and controlled over the DevTools Protocol | The smallest change, no new shell. | Still no app of its own: no installer and no window the user knows. Only the kiosk view improves. |
 
-**Lean.** An app shell with its own bundled Chromium, with the Python server inside. Electron
-first, PySide6 as the fallback candidate. Reason: one engine everywhere matters for research,
-and a real app needs a shell anyway. This is a lean, to be decided by a spike, not a decision.
+**Candidates.** An app shell with its own bundled Chromium, with the Python server inside:
+PySide6 with QtWebEngine or Electron. One engine everywhere matters for research, and a real
+app needs a shell anyway. PySide6 keeps everything in Python and avoids bundling H.264 decoders.
+Electron has the better tooling and plays H.264, with the open patent question. To be decided
+by a spike, not decided here. The tablets are not affected: Safari on the iPad plays MP4
+with the system decoders.
+
+**Timing without shortcuts.** These rules cost little now and keep recorded data honest.
+- Estimate the clock offset between the server and each tablet with repeated pings. Keep the
+  sample with the smallest round trip. Store the offset and its uncertainty (about half the
+  round trip) with the session.
+- For each time-critical event log the server time, the tablet time, the mapped time, the
+  uncertainty and the clock source. "Unknown" stays allowed, as in the Recorder Core.
+- Hide the network: load the next cards and media on the tablet in advance. For a
+  time-critical event send "show at time T" and let the tablet schedule it locally, instead of
+  showing it when the message arrives.
+- Lab setup: a dedicated router or a wired link, 5 GHz Wi-Fi, all devices on the same network,
+  notifications and auto-lock off on the tablet (Guided Access helps).
+- Flag sessions with high jitter in the session summary.
+
+**Later, only if a study needs frame-accurate stimuli.** A stimulus module as a plugin that uses
+the same event fields: a native player built on a mature library (for example libmpv), the
+system decoders for H.264 so that no patent-encumbered decoder is bundled, presentation
+synchronised to the screen refresh, and a check with a light sensor. Not planned. The fields
+above make it possible later without changing the recorded data.
 
 **Rules for any option.**
 - Navigation only to the URLs of the running session. No remote URLs.
@@ -952,7 +974,9 @@ university should check them before anything is bundled.
 
 **Measure first, assume no numbers.**
 - Jitter and offset of event timestamps against the shared time base.
-- Stimulus onset against a real display signal, for example a photodiode.
+- Round trip and jitter between the server and a tablet on the lab network, and how stable the
+  clock offset stays over a session.
+- The effect of loading cards in advance on the delay the participant sees.
 - Full-screen behaviour on a second screen and window focus when the system shows a
   notification.
 - Package size, start time and update path of each shell candidate.
@@ -960,7 +984,8 @@ university should check them before anything is bundled.
 **Open questions.**
 - Owner: who holds the signing credentials, and who pays for them.
 - Shell choice by spike: Electron against PySide6, using the measures above.
-- Codecs: do stimuli need H.264 or AAC?
+- Which events are time-critical in the studies, and how large an uncertainty is acceptable?
+- Codecs: do stimuli on the study computer need H.264 or AAC?
 - Platforms: Windows x64 and macOS 13+ like today?
 - How the server runs inside the app: child process, ports, restart after a crash.
 
