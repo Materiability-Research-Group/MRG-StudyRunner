@@ -912,7 +912,7 @@ study session. Browser and stimulus events are logged with timestamps on the sha
 | Option | For | Against |
 |---|---|---|
 | Electron shell with the Python server as a child process | One Chromium on every system, so rendering and timing are the same. Windows, tray, kiosk windows on a second screen, installers and updater in one place. The Python code stays. | A second runtime (Node), a large package, Chromium security updates become our duty, signing is needed. |
-| PySide6 with QtWebEngine (Chromium inside Qt), all in Python | One language, one engine everywhere, native windows. No H.264 decoder has to be bundled. | Qt licence duties (LGPL). Open Qt builds do not play H.264 or AAC, so desktop stimuli need WebM or a conversion on import. On macOS the QtWebEngine helper process needs extra entitlements for notarization. QtWebEngine follows Chromium with a delay, a large package, Qt skills are needed. |
+| PySide6 with QtWebEngine (Chromium inside Qt), all in Python | One language, one engine everywhere, native windows. No H.264 decoder has to be bundled. | Qt licence duties (LGPL). Open Qt builds do not play H.264 or AAC, so desktop stimuli need WebM or a conversion on import. QtWebEngine follows Chromium with a delay, a large package, Qt skills are needed. |
 | Tauri shell with the Python server as a sidecar | Small package, same stack as OCYRA and TAZAMA. | WebView2 on Windows and WKWebView on macOS are two engines, so a study could behave differently per system. A Tauri wrapper existed in 1.x and was dropped, the repo does not record why. |
 | Pinned Chromium started by the server and controlled over the DevTools Protocol | The smallest change, no new shell. | Still no app of its own: no installer and no window the user knows. Only the kiosk view improves. |
 
@@ -1050,11 +1050,9 @@ university should check them before anything is bundled.
   codecs.
 - Qt route: PySide6 and QtWebEngine are LGPL or commercial. The LGPL duties (licence notices,
   replaceable libraries) must be met.
-- macOS and Windows: a real app needs signing. On macOS that means Apple signing and
-  notarization. `docs/release-and-update.md` states that this project holds no such
-  credentials today, and the current source release was chosen partly for that reason. Whether
-  the group or the university has an Apple Developer account and a Windows signing certificate
-  is open.
+- Signing: there is no Apple Developer account and none is planned, so no notarization.
+  Distribution therefore uses the locally assembled app described above. A downloaded,
+  finished app bundle is not offered.
 
 **Measure first, assume no numbers.**
 - Jitter and offset of event timestamps against the shared time base.
